@@ -1,56 +1,278 @@
-# Welcome to your Expo app 👋
+# Cleanodry App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Cleanodry mobile and web app built with Expo SDK 56, React Native, React 19, and Expo Router.
 
-## Get started
+## Tech Stack
 
-1. Install dependencies
+- Expo SDK 56
+- React Native 0.85
+- React 19
+- Expo Router
+- TypeScript
+- EAS Build configuration
 
-   ```bash
-   npm install
-   ```
+## Requirements
 
-2. Start the app
+Install these before running the project:
 
-   ```bash
-   npx expo start
-   ```
+- Node.js 22.13 or newer
+- npm
+- Git
+- Expo Go app on your phone, or Android Studio/Xcode for emulators
+- EAS CLI only if you want to create cloud builds
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+Expo SDK 56 requires Node.js 22.13.x or newer. Check your local versions:
 
 ```bash
-npm run reset-project
+node --version
+npm --version
+git --version
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Clone And Setup
 
-### Other setup steps
+Clone the repository:
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```bash
+git clone <repo-url>
+cd cleanodry-app
+```
 
-## Learn more
+Install dependencies:
 
-To learn more about developing your project with Expo, look at the following resources:
+```bash
+npm install
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Create a local environment file if you need to use a custom backend:
 
-## Join the community
+```bash
+cp .env.example .env.local
+```
 
-Join our community of developers creating universal apps.
+If `.env.example` is not available, create `.env.local` manually:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```bash
+EXPO_PUBLIC_API_BASE_URL=https://your-api-domain.com/api
+```
+
+If this variable is not set, the app uses:
+
+```bash
+https://staging.petqc.com/api
+```
+
+## Start Development Server
+
+Start Expo:
+
+```bash
+npm run start
+```
+
+You can also run:
+
+```bash
+npx expo start
+```
+
+After the server starts, use the terminal shortcuts:
+
+- Press `a` to open Android.
+- Press `i` to open iOS Simulator on macOS.
+- Press `w` to open web.
+- Scan the QR code with Expo Go to open on a physical device.
+
+If your phone cannot connect over LAN, start with tunnel mode:
+
+```bash
+npx expo start --tunnel
+```
+
+## Run On Web
+
+```bash
+npm run web
+```
+
+## Run On Android
+
+Install Android Studio, create an emulator, then run:
+
+```bash
+npm run android
+```
+
+For a physical Android device, enable USB debugging and keep the device connected.
+
+## Run On iOS
+
+iOS builds require macOS with Xcode installed.
+
+```bash
+npm run ios
+```
+
+## Useful Scripts
+
+```bash
+npm run start
+npm run web
+npm run android
+npm run ios
+npm run lint
+```
+
+Script details:
+
+- `start`: starts the Expo development server.
+- `web`: starts the app in a browser.
+- `android`: creates/runs the Android native app.
+- `ios`: creates/runs the iOS native app.
+- `lint`: runs Expo lint. If ESLint is not configured yet, Expo may ask to install ESLint packages.
+
+## API Setup
+
+The API base URL is read from:
+
+```bash
+EXPO_PUBLIC_API_BASE_URL
+```
+
+Used endpoints include:
+
+- `/stores`
+- `/services`
+- `/whatsapp/otp`
+- `/whatsapp/otp/verify`
+- `/customer-register`
+- `/pickups`
+- `/customer-details`
+- `/customer-pickups`
+- `/customer-orders`
+
+For local backend testing, use a reachable URL. Mobile devices usually cannot access your computer through `localhost`, so use your machine LAN IP:
+
+```bash
+EXPO_PUBLIC_API_BASE_URL=http://192.168.1.10:8000/api
+```
+
+Then restart Expo:
+
+```bash
+npx expo start --clear
+```
+
+## Project Structure
+
+```text
+src/app/                 Expo Router screens
+src/components/          Shared UI components
+src/lib/                 API, auth, and helpers
+src/hooks/               Shared hooks
+src/constants/           Theme constants
+assets/images/           App images and icons
+scripts/                 Utility scripts
+app.json                 Expo app configuration
+eas.json                 EAS build configuration
+```
+
+## Environment Files
+
+Do not commit local secrets or machine-specific files.
+
+Ignored files include:
+
+- `node_modules/`
+- `.expo/`
+- `.env*.local`
+- `ios/`
+- `android/`
+- `.DS_Store`
+
+## TypeScript Check
+
+Run TypeScript validation:
+
+```bash
+npx tsc --noEmit
+```
+
+## EAS Build
+
+Install EAS CLI:
+
+```bash
+npm install -g eas-cli
+```
+
+Login:
+
+```bash
+eas login
+```
+
+Development build:
+
+```bash
+eas build --profile development --platform android
+eas build --profile development --platform ios
+```
+
+Preview build:
+
+```bash
+eas build --profile preview --platform android
+eas build --profile preview --platform ios
+```
+
+Production build:
+
+```bash
+eas build --profile production --platform android
+eas build --profile production --platform ios
+```
+
+## Troubleshooting
+
+Clear Expo cache:
+
+```bash
+npx expo start --clear
+```
+
+Reinstall dependencies:
+
+```bash
+rm -rf node_modules package-lock.json
+npm install
+```
+
+Check Expo dependencies:
+
+```bash
+npx expo install --check
+```
+
+Fix compatible Expo package versions:
+
+```bash
+npx expo install --fix
+```
+
+If native builds fail, make sure Android Studio or Xcode is installed correctly. Native folders are generated by Expo and are ignored in Git for this project.
+
+## Important Notes
+
+- Use `npx expo install <package-name>` for Expo packages so versions stay compatible with SDK 56.
+- Restart the dev server after changing `.env.local`.
+- Keep `package-lock.json` committed so every developer installs the same dependency versions.
+- The app scheme is `cleanodryapp`.
+- Android package is `com.nanhe4it.cleanodryapp`.
+- iOS bundle identifier is `com.nanhe4it.cleanodryapp`.
+
+## References
+
+- [Expo SDK 56 documentation](https://docs.expo.dev/versions/v56.0.0/)
+- [Expo CLI documentation](https://docs.expo.dev/more/expo-cli/)
+- [EAS Build documentation](https://docs.expo.dev/build/introduction/)
