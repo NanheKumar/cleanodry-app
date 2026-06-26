@@ -1,7 +1,8 @@
 import { use, useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { Button, Card, Field, Hero, Message, Screen, SelectBox, brand } from '@/components/cleanodry-ui';
+import { AppCard, AppShell, LoadingScreen } from '@/components/app-shell';
+import { Button, Field, Message, SelectBox, brand } from '@/components/cleanodry-ui';
 import { LoginCard } from '@/components/login-card';
 import { AuthContext } from '@/lib/auth-context';
 import { getCustomerDetails, getServices, getStores, schedulePickup, type Service, type Store } from '@/lib/api';
@@ -161,17 +162,20 @@ export default function PickupScreen() {
     }
   }
 
+  if (auth.loading) {
+    return <LoadingScreen />;
+  }
+
   return (
-    <Screen>
-      <Hero
-        eyebrow="Doorstep service"
-        title="Schedule a pickup"
-        subtitle={auth.user ? 'Select service, pickup date, and time slot.' : 'Login first, then schedule your pickup.'}
-      />
+    <AppShell
+      title="Schedule Pickup"
+      subtitle={auth.user ? 'Select service, pickup date, and time slot.' : 'Login first, then schedule your pickup.'}
+      icon="pickup"
+      requireAuth={false}>
       {!auth.user ? (
         <LoginCard />
       ) : (
-      <Card>
+      <AppCard>
         {lockedStore ? (
           <View style={local.lockedStore}>
             <Text style={local.lockedStoreLabel}>Store</Text>
@@ -227,9 +231,9 @@ export default function PickupScreen() {
         <Message text={message} />
         <Message text={success} tone="success" />
         <Button title="Submit Pickup" loading={loading} onPress={handleSubmit} />
-      </Card>
+      </AppCard>
       )}
-    </Screen>
+    </AppShell>
   );
 }
 

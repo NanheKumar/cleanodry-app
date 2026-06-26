@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { use, useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { Button, Card, Field, Message, SelectBox, brand } from '@/components/cleanodry-ui';
+import { Button, Field, Message, SelectBox, brand } from '@/components/cleanodry-ui';
 import { ApiError, type CustomerSummary, sendOtp, verifyOtp } from '@/lib/api';
 import { AuthContext } from '@/lib/auth-context';
 
@@ -105,17 +105,25 @@ export function LoginCard({ onLoggedIn }: { onLoggedIn?: () => void }) {
   }
 
   return (
-    <Card>
+    <View style={local.card}>
+      <View style={local.cardHandle} />
       <View style={local.cardIntro}>
+        <View style={local.stepRow}>
+          <Text style={[local.stepDot, step === 'mobile' ? local.stepDotActive : null]}>1</Text>
+          <View style={local.stepLine} />
+          <Text style={[local.stepDot, step === 'otp' ? local.stepDotActive : null]}>2</Text>
+          <View style={local.stepLine} />
+          <Text style={[local.stepDot, step === 'store' ? local.stepDotActive : null]}>3</Text>
+        </View>
         <Text style={local.formTitle}>
-          {step === 'mobile' ? 'Login / Sign Up' : step === 'otp' ? 'Verify OTP' : 'Select Store'}
+          {step === 'mobile' ? 'Sign in with mobile' : step === 'otp' ? 'Enter verification code' : 'Choose your store'}
         </Text>
         <Text style={local.formSub}>
           {step === 'mobile'
-            ? 'Enter your registered mobile number.'
+            ? 'We will send a secure OTP on your WhatsApp number.'
             : step === 'otp'
-              ? 'Enter the 6-digit OTP sent to WhatsApp.'
-              : 'Select your store to complete login.'}
+              ? `OTP has been sent to +91 ${mobile}.`
+              : 'This mobile number is linked with multiple stores.'}
         </Text>
       </View>
       {step === 'mobile' ? (
@@ -131,7 +139,7 @@ export function LoginCard({ onLoggedIn }: { onLoggedIn?: () => void }) {
           />
           <Message text={message} />
           <Message text={success} tone="success" />
-          <Button title="Send OTP" loading={loading} onPress={handleSendOtp} />
+          <Button title="Send WhatsApp OTP" loading={loading} onPress={handleSendOtp} />
         </>
       ) : step === 'otp' ? (
         <>
@@ -145,7 +153,7 @@ export function LoginCard({ onLoggedIn }: { onLoggedIn?: () => void }) {
           />
           <Message text={message} />
           <Message text={success} tone="success" />
-          <Button title="Verify and Login" loading={loading} onPress={handleVerifyOtp} />
+          <Button title="Verify and continue" loading={loading} onPress={handleVerifyOtp} />
           <Text style={local.resendText}>
             {resendSeconds > 0 ? `Resend OTP in ${resendSeconds}s` : 'Did not receive OTP?'}
           </Text>
@@ -180,31 +188,74 @@ export function LoginCard({ onLoggedIn }: { onLoggedIn?: () => void }) {
           <Button title="Back to OTP" variant="ghost" onPress={() => setStep('otp')} />
         </>
       )}
-    </Card>
+    </View>
   );
 }
 
 const local = {
+  card: {
+    backgroundColor: brand.white,
+    borderColor: 'rgba(52, 122, 0, 0.10)',
+    borderRadius: 24,
+    borderWidth: 1,
+    boxShadow: '0 14px 34px rgba(31, 56, 20, 0.13)',
+    gap: 12,
+    padding: 16,
+  },
+  cardHandle: {
+    alignSelf: 'center' as const,
+    backgroundColor: 'rgba(52, 122, 0, 0.18)',
+    borderRadius: 999,
+    height: 3,
+    width: 42,
+  },
   cardIntro: {
-    gap: 4,
+    gap: 6,
     marginBottom: 2,
   },
+  stepRow: {
+    alignItems: 'center' as const,
+    alignSelf: 'center' as const,
+    flexDirection: 'row' as const,
+    marginBottom: 2,
+  },
+  stepDot: {
+    backgroundColor: '#EEF4EA',
+    borderRadius: 999,
+    color: brand.gray,
+    fontSize: 12,
+    fontWeight: '900' as const,
+    height: 24,
+    lineHeight: 24,
+    overflow: 'hidden' as const,
+    textAlign: 'center' as const,
+    width: 24,
+  },
+  stepDotActive: {
+    backgroundColor: brand.green,
+    color: brand.white,
+  },
+  stepLine: {
+    backgroundColor: '#DDE8D7',
+    height: 2,
+    width: 26,
+  },
   formTitle: {
-    color: brand.black,
+    color: '#111B0D',
     fontSize: 20,
-    fontWeight: '800' as const,
+    fontWeight: '900' as const,
     textAlign: 'center' as const,
   },
   formSub: {
-    color: brand.gray,
-    fontSize: 14,
-    lineHeight: 20,
+    color: '#64705E',
+    fontSize: 13,
+    lineHeight: 18,
     textAlign: 'center' as const,
   },
   resendText: {
     color: brand.gray,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
     textAlign: 'center' as const,
   },
 };
