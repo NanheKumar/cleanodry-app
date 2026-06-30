@@ -11,6 +11,19 @@ export type StoreAccount = Store & {
   customer_id: number;
 };
 
+export type WebsiteStore = Store & {
+  email?: string | null;
+  mobile?: string | null;
+  contact_no?: string | null;
+  gst_no?: string | null;
+  company_name?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state_id?: number | null;
+  state_name?: string | null;
+  pincode?: string | null;
+};
+
 export type Service = {
   id: number;
   name: string;
@@ -154,6 +167,13 @@ export async function getStoresForMobile(mobile: string) {
   const payload = await request<
     StoreAccount[] | { customer_exists?: boolean; stores?: StoreAccount[]; data?: StoreAccount[] }
   >(`/stores?mobile=${encodeURIComponent(normalizeMobile(mobile))}`);
+  return Array.isArray(payload) ? payload : (payload.stores ?? payload.data ?? []);
+}
+
+export async function getWebsiteStores() {
+  const payload = await request<WebsiteStore[] | { success?: boolean; stores?: WebsiteStore[]; data?: WebsiteStore[] }>(
+    "/website-stores",
+  );
   return Array.isArray(payload) ? payload : (payload.stores ?? payload.data ?? []);
 }
 

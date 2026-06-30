@@ -9,8 +9,10 @@ import {
   ApiError,
   getCustomerPackageLabels,
   getStorePackages,
+  getWebsiteStores,
   type CustomerPackageLabelsPayload,
   type StorePackage,
+  type WebsiteStore,
 } from '@/lib/api';
 import { AuthContext } from '@/lib/auth-context';
 import { formatInr } from '@/lib/format';
@@ -243,11 +245,86 @@ function PackagesContent() {
 }
 
 function StoresContent() {
+  const [stores, setStores] = useState<WebsiteStore[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    setMessage('');
+    getWebsiteStores()
+      .then((nextStores) => {
+        if (mounted) {
+          setStores(nextStores);
+        }
+      })
+      .catch((error) => {
+        if (mounted) {
+          setMessage(error instanceof Error ? error.message : 'Could not load stores.');
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  function contactNumber(store: WebsiteStore) {
+    return String(store.contact_no || store.mobile || '').trim();
+  }
+
   return (
     <AppCard>
       <Text style={local.contentTitle}>Store locator</Text>
       <Text style={local.contentText}>Cleanodry is serving customers across multiple locations.</Text>
       <Image source={require('@/assets/images/stores-map.png')} style={local.mapImage} contentFit="contain" />
+      <Message text={message} />
+      {loading ? <Text style={local.storeMuted}>Loading stores...</Text> : null}
+      {!loading && !message && stores.length === 0 ? <Text style={local.storeMuted}>No stores found.</Text> : null}
+      {stores.map((store) => {
+        const phone = contactNumber(store);
+        const location = [store.city, store.state_name, store.pincode].filter(Boolean).join(', ');
+        const email = String(store.email ?? '').trim();
+        const showEmail = email.toLowerCase() !== 'factory@cleanodry.com';
+        return (
+          <View key={String(store.id)} style={local.storeCard}>
+            <View style={local.storeCardHead}>
+              <View style={local.storePinIcon}>
+                <MenuGlyph name="stores" />
+              </View>
+              <View style={local.storeCardCopy}>
+                <Text selectable style={local.storeName}>
+                  {store.name}
+                  {store.code ? ` (${store.code})` : ''}
+                </Text>
+              </View>
+            </View>
+            {store.address ? (
+              <Text selectable style={local.storeAddress}>
+                {store.address}
+              </Text>
+            ) : null}
+            {location ? <Text style={local.storeMeta}>{location}</Text> : null}
+            {email && showEmail ? (
+              <Text selectable style={local.storeMeta}>
+                {email}
+              </Text>
+            ) : null}
+            {phone ? (
+              <Pressable style={local.storeCallButton} onPress={() => Linking.openURL(`tel:+91${phone.replace(/\D/g, '').slice(-10)}`)}>
+                <MenuGlyph name="support" active />
+                <Text style={local.storeCallText}>Call {phone}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        );
+      })}
       <Button title="Call Nearest Store" onPress={() => Linking.openURL('tel:+917428380598')} />
     </AppCard>
   );
@@ -649,6 +726,72 @@ const local = {
   mapImage: {
     aspectRatio: 1342 / 628,
     width: '100%' as const,
+  },
+  storeMuted: {
+    color: brand.gray,
+    fontSize: 13,
+    fontWeight: '700' as const,
+    lineHeight: 18,
+    textAlign: 'center' as const,
+  },
+  storeCard: {
+    backgroundColor: '#F6FAF3',
+    borderColor: 'rgba(52, 122, 0, 0.14)',
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 8,
+    padding: 14,
+  },
+  storeCardHead: {
+    alignItems: 'center' as const,
+    flexDirection: 'row' as const,
+    gap: 10,
+  },
+  storePinIcon: {
+    alignItems: 'center' as const,
+    backgroundColor: brand.white,
+    borderRadius: 14,
+    height: 42,
+    justifyContent: 'center' as const,
+    width: 42,
+  },
+  storeCardCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  storeName: {
+    color: '#111B0D',
+    fontSize: 15,
+    fontWeight: '900' as const,
+    lineHeight: 20,
+  },
+  storeAddress: {
+    color: '#4F5B49',
+    fontSize: 13,
+    fontWeight: '700' as const,
+    lineHeight: 19,
+  },
+  storeMeta: {
+    color: brand.gray,
+    fontSize: 12,
+    fontWeight: '700' as const,
+    lineHeight: 17,
+  },
+  storeCallButton: {
+    alignItems: 'center' as const,
+    alignSelf: 'flex-start' as const,
+    backgroundColor: brand.green,
+    borderRadius: 14,
+    flexDirection: 'row' as const,
+    gap: 8,
+    marginTop: 2,
+    minHeight: 42,
+    paddingHorizontal: 12,
+  },
+  storeCallText: {
+    color: brand.white,
+    fontSize: 12,
+    fontWeight: '900' as const,
   },
   aboutImage: {
     aspectRatio: 16 / 9,
