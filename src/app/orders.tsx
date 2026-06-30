@@ -1,9 +1,9 @@
 import { use, useEffect, useState } from 'react';
-import { Text, type TextStyle, View } from 'react-native';
+import { Linking, Pressable, Text, type TextStyle, View } from 'react-native';
 
 import { AppCard, AppShell, EmptyState } from '@/components/app-shell';
 import { Message, brand } from '@/components/cleanodry-ui';
-import { ApiError, getCustomerOrders } from '@/lib/api';
+import { API_BASE_URL, ApiError, getCustomerOrders } from '@/lib/api';
 import { AuthContext } from '@/lib/auth-context';
 import { formatDate, formatInr } from '@/lib/format';
 
@@ -47,6 +47,24 @@ function DetailItem({ label, value }: { label: string; value: string }) {
   );
 }
 
+function invoiceUrl(order: Record<string, unknown>) {
+  const value =
+    order.invoice_url ??
+    order.invoice_link ??
+    order.invoice_pdf ??
+    order.invoice_path ??
+    order.invoice;
+  const url = String(value ?? '').trim();
+  if (!url) {
+    return '';
+  }
+  if (/^https?:\/\//i.test(url)) {
+    return url;
+  }
+  const apiRoot = API_BASE_URL.replace(/\/api\/?$/, '');
+  return `${apiRoot}/${url.replace(/^\/+/, '')}`;
+}
+
 export default function OrdersScreen() {
   const auth = use(AuthContext);
   const [orders, setOrders] = useState<Record<string, unknown>[]>([]);
@@ -82,6 +100,7 @@ export default function OrdersScreen() {
         const total = formatInr(amounts?.display_total ?? amounts?.total ?? 0);
         const createdAt = formatDate(order.created_at) || 'Date not available';
         const itemCount = textValue(order.qty, '0');
+        const invoiceLink = invoiceUrl(order);
 
         return (
           <AppCard key={String(order.id)}>
@@ -113,6 +132,11 @@ export default function OrdersScreen() {
               <DetailItem label="Payment" value={paymentStatus} />
               <DetailItem label="Created" value={createdAt} />
             </View>
+            {invoiceLink ? (
+              <Pressable style={styles.invoiceButton} onPress={() => Linking.openURL(invoiceLink)}>
+                <Text style={styles.invoiceButtonText}>Open Invoice</Text>
+              </Pressable>
+            ) : null}
           </AppCard>
         );
       })}
@@ -260,5 +284,19 @@ const styles = {
     fontSize: 14,
     fontWeight: '800' as const,
     lineHeight: 20,
+  },
+  invoiceButton: {
+    alignItems: 'center' as const,
+    backgroundColor: brand.green,
+    borderRadius: 16,
+    minHeight: 48,
+    justifyContent: 'center' as const,
+    paddingHorizontal: 14,
+  },
+  invoiceButtonText: {
+    color: brand.white,
+    fontSize: 13,
+    fontWeight: '900' as const,
+    textTransform: 'uppercase' as const,
   },
 };
