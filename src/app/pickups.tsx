@@ -2,7 +2,7 @@ import { use, useEffect, useState } from 'react';
 
 import { AppCard, AppShell, EmptyState } from '@/components/app-shell';
 import { Message, Row } from '@/components/cleanodry-ui';
-import { getCustomerPickups } from '@/lib/api';
+import { ApiError, getCustomerPickups } from '@/lib/api';
 import { AuthContext } from '@/lib/auth-context';
 import { formatDate } from '@/lib/format';
 
@@ -17,7 +17,13 @@ export default function PickupsScreen() {
     }
     getCustomerPickups(auth.user.token)
       .then((data) => setPickups(data.pickups))
-      .catch((error) => setMessage(error instanceof Error ? error.message : 'Could not load pickups.'));
+      .catch((error) => {
+        if (error instanceof ApiError && error.status === 401) {
+          auth.signOut();
+          return;
+        }
+        setMessage(error instanceof Error ? error.message : 'Could not load pickups.');
+      });
   }, [auth.user]);
 
   return (

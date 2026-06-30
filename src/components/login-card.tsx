@@ -1,20 +1,45 @@
-import { router } from 'expo-router';
 import { use, useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { Button, Field, Message, SelectBox, brand } from '@/components/cleanodry-ui';
-import { ApiError, type CustomerSummary, sendOtp, verifyOtp } from '@/lib/api';
+import {
+  getStores,
+  getStoresForMobile,
+  registerCustomer,
+  selectStore,
+  sendOtp,
+  type CustomerSummary,
+  type SessionUser,
+  type Store,
+  type StoreAccount,
+  verifyOtp,
+} from '@/lib/api';
 import { AuthContext } from '@/lib/auth-context';
 
-type LoginStep = 'mobile' | 'otp' | 'store';
+type LoginStep = 'mobile' | 'otp' | 'register' | 'store';
+
+function cleanMobile(value: string) {
+  return value.replace(/\D/g, '').slice(0, 10);
+}
+
+function fullName(customer: CustomerSummary) {
+  return `${customer.first_name ?? ''} ${customer.last_name ?? ''}`.trim() || 'Cleanodry Customer';
+}
 
 export function LoginCard({ onLoggedIn }: { onLoggedIn?: () => void }) {
   const auth = use(AuthContext);
   const [step, setStep] = useState<LoginStep>('mobile');
   const [mobile, setMobile] = useState('');
   const [otp, setOtp] = useState('');
-  const [customers, setCustomers] = useState<CustomerSummary[]>([]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+  const [selectionToken, setSelectionToken] = useState<string | null>(null);
+  const [activeCustomer, setActiveCustomer] = useState<CustomerSummary | null>(null);
+  const [linkedStores, setLinkedStores] = useState<StoreAccount[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
+  const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [address, setAddress] = useState('');
+  const [pincode, setPincode] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [success, setSuccess] = useState('');
@@ -28,39 +53,127 @@ export function LoginCard({ onLoggedIn }: { onLoggedIn?: () => void }) {
     return () => clearTimeout(timer);
   }, [resendSeconds]);
 
-  const customerOptions = useMemo(
+  const linkedStoreOptions = useMemo(
     () =>
-      customers.map((customer) => ({
-        id: customer.id,
-        name: customer.store ? `${customer.store.name}${customer.store.code ? ` (${customer.store.code})` : ''}` : 'Store',
-        detail: `${customer.first_name} ${customer.last_name}`.trim() || 'Cleanodry Customer',
+      linkedStores.map((store) => ({
+        id: store.id,
+        name: `${store.name}${store.code ? ` (${store.code})` : ''}`,
+        detail: `Customer #${store.customer_id}`,
       })),
-    [customers],
+    [linkedStores],
   );
+
+  const storeOptions = useMemo(
+    () =>
+      stores.map((store) => ({
+        id: store.id,
+        name: store.name,
+        detail: store.code,
+      })),
+    [stores],
+  );
+
+  function resetFlow() {
+    setStep('mobile');
+    setOtp('');
+    setSelectionToken(null);
+    setActiveCustomer(null);
+    setLinkedStores([]);
+    setSelectedStoreId(null);
+    setFirstName('');
+    setLastName('');
+    setAddress('');
+    setPincode('');
+    setSuccess('');
+    setMessage('');
+    setResendSeconds(0);
+  }
+
+  function completeLogin(user: SessionUser) {
+    auth.signIn(user);
+    resetFlow();
+    onLoggedIn?.();
+  }
+
+  async function finalizeStoreLogin(store: StoreAccount, token = selectionToken) {
+    if (!token) {
+      setMessage('Please verify OTP again before selecting store.');
+      setStep('otp');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const user = await selectStore({
+        selectionToken: token,
+        storeId: store.id,
+        customerId: store.customer_id,
+      });
+      completeLogin(user);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not select store. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadRegistrationStores() {
+    const nextStores = await getStores();
+    setStores(nextStores);
+    setSelectedStoreId((current) => current ?? nextStores[0]?.id ?? null);
+  }
+
+  async function loadLinkedStoresAndContinue(token: string, customer: CustomerSummary | null) {
+    const nextStores = await getStoresForMobile(mobile);
+    if (nextStores.length === 1) {
+      await finalizeStoreLogin(nextStores[0], token);
+      return;
+    }
+
+    if (nextStores.length > 1) {
+      setLinkedStores(nextStores);
+      setSelectedStoreId(nextStores[0]?.id ?? null);
+      setStep('store');
+      setSuccess('OTP verified. Select your store.');
+      return;
+    }
+
+    if (customer?.store?.id) {
+      await finalizeStoreLogin(
+        {
+          id: customer.store.id,
+          name: customer.store.name,
+          code: customer.store.code,
+          customer_id: customer.id,
+        },
+        token,
+      );
+      return;
+    }
+
+    setMessage('No linked stores found for this mobile number.');
+  }
 
   async function handleSendOtp() {
     setMessage('');
     setSuccess('');
-    const cleanMobile = mobile.replace(/\D/g, '');
-    if (!/^[6-9]\d{9}$/.test(cleanMobile)) {
+    setSelectionToken(null);
+    setActiveCustomer(null);
+    setLinkedStores([]);
+    const nextMobile = cleanMobile(mobile);
+    if (!/^[6-9]\d{9}$/.test(nextMobile)) {
       setMessage('Please enter a valid 10-digit Indian mobile number.');
       return;
     }
 
     setLoading(true);
     try {
-      const data = await sendOtp(cleanMobile);
-      const nextCustomers = data.customers ?? [];
-      setCustomers(nextCustomers);
-      setSelectedCustomerId(nextCustomers.length === 1 ? (nextCustomers[0]?.id ?? data.customer_id ?? null) : (data.customer_id ?? null));
+      await sendOtp(nextMobile);
+      setMobile(nextMobile);
       setStep('otp');
       setResendSeconds(30);
       setSuccess('OTP sent to WhatsApp.');
     } catch (error) {
-      if (error instanceof ApiError && error.status === 404) {
-        router.push({ pathname: '/register', params: { mobile: cleanMobile } });
-        return;
-      }
       setMessage(error instanceof Error ? error.message : 'Could not send OTP. Please try again.');
     } finally {
       setLoading(false);
@@ -74,29 +187,27 @@ export function LoginCard({ onLoggedIn }: { onLoggedIn?: () => void }) {
       setMessage('Please enter the 6-digit OTP.');
       return;
     }
-    if (customers.length > 1 && !selectedCustomerId) {
-      setStep('store');
-      setSuccess('OTP entered. Select your store to continue.');
-      return;
-    }
-    if (!selectedCustomerId) {
-      setMessage('Please select your store/customer first.');
-      return;
-    }
-    await loginWithCustomer(selectedCustomerId);
-  }
 
-  async function loginWithCustomer(customerId: number) {
     setLoading(true);
     try {
-      const user = await verifyOtp({ mobile, otp, customerId });
-      auth.signIn(user);
-      setOtp('');
-      setCustomers([]);
-      setSelectedCustomerId(null);
-      setStep('mobile');
-      setSuccess('');
-      onLoggedIn?.();
+      const data = await verifyOtp({ mobile, otp });
+      const token = data.selection_token;
+      if (!token) {
+        setMessage('OTP verified, but login token was missing. Please resend OTP.');
+        return;
+      }
+
+      setSelectionToken(token);
+      setActiveCustomer(data.active_customer ?? null);
+
+      if (data.customer_exists === false) {
+        await loadRegistrationStores();
+        setStep('register');
+        setSuccess('OTP verified. Complete registration.');
+        return;
+      }
+
+      await loadLinkedStoresAndContinue(token, data.active_customer ?? null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Invalid OTP. Please try again.');
     } finally {
@@ -104,27 +215,87 @@ export function LoginCard({ onLoggedIn }: { onLoggedIn?: () => void }) {
     }
   }
 
+  async function handleRegister() {
+    setMessage('');
+    setSuccess('');
+    const trimmedFirstName = firstName.trim();
+    const trimmedLastName = lastName.trim();
+    const trimmedAddress = address.trim();
+
+    if (!trimmedFirstName) {
+      setMessage('Please enter first name.');
+      return;
+    }
+    if (!selectedStoreId) {
+      setMessage('Please select a store.');
+      return;
+    }
+    if (trimmedAddress.length < 5 || !/^\d{6}$/.test(pincode)) {
+      setMessage('Please enter address and a valid 6-digit pincode.');
+      return;
+    }
+    if (!selectionToken) {
+      setMessage('Please verify OTP again before registering.');
+      setStep('otp');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const registered = await registerCustomer({
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
+        mobile,
+        storeId: selectedStoreId,
+        address: trimmedAddress,
+        pincode,
+      });
+      const customer = registered.customer;
+      const selectedStore =
+        stores.find((store) => store.id === selectedStoreId) ??
+        customer.store ?? {
+          id: selectedStoreId,
+          name: 'Selected Store',
+        };
+
+      try {
+        const user = await selectStore({
+          selectionToken,
+          storeId: selectedStoreId,
+          customerId: customer.id,
+        });
+        completeLogin(user);
+      } catch (error) {
+        console.warn('Registered customer token exchange failed', error);
+        completeLogin({
+          token: '',
+          customerId: customer.id,
+          firstName: customer.first_name,
+          lastName: customer.last_name,
+          mobile: customer.mobile,
+          store: selectedStore,
+        });
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not create account. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <View style={local.card}>
-      <View style={local.cardHandle} />
       <View style={local.cardIntro}>
-        <View style={local.stepRow}>
-          <Text style={[local.stepDot, step === 'mobile' ? local.stepDotActive : null]}>1</Text>
-          <View style={local.stepLine} />
-          <Text style={[local.stepDot, step === 'otp' ? local.stepDotActive : null]}>2</Text>
-          <View style={local.stepLine} />
-          <Text style={[local.stepDot, step === 'store' ? local.stepDotActive : null]}>3</Text>
-        </View>
         <Text style={local.formTitle}>
-          {step === 'mobile' ? 'Sign in with mobile' : step === 'otp' ? 'Enter verification code' : 'Choose your store'}
-        </Text>
-        <Text style={local.formSub}>
           {step === 'mobile'
-            ? 'We will send a secure OTP on your WhatsApp number.'
+            ? 'Login'
             : step === 'otp'
-              ? `OTP has been sent to +91 ${mobile}.`
-              : 'This mobile number is linked with multiple stores.'}
+              ? 'Enter OTP'
+              : step === 'register'
+                ? 'Create Account'
+                : 'Select Store'}
         </Text>
+        {step !== 'mobile' ? <Text style={local.mobileHint}>+91 {mobile}</Text> : null}
       </View>
       {step === 'mobile' ? (
         <>
@@ -132,7 +303,7 @@ export function LoginCard({ onLoggedIn }: { onLoggedIn?: () => void }) {
             label="Mobile Number"
             prefix="+91"
             value={mobile}
-            onChangeText={(value) => setMobile(value.replace(/\D/g, '').slice(0, 10))}
+            onChangeText={(value) => setMobile(cleanMobile(value))}
             keyboardType="number-pad"
             placeholder="10-digit number"
             textContentType="telephoneNumber"
@@ -158,34 +329,59 @@ export function LoginCard({ onLoggedIn }: { onLoggedIn?: () => void }) {
             {resendSeconds > 0 ? `Resend OTP in ${resendSeconds}s` : 'Did not receive OTP?'}
           </Text>
           {resendSeconds === 0 ? <Button title="Resend OTP" variant="outline" loading={loading} onPress={handleSendOtp} /> : null}
-          <Button
-            title="Change Mobile"
-            variant="ghost"
-            onPress={() => {
-              setStep('mobile');
-              setSelectedCustomerId(null);
-              setCustomers([]);
-              setOtp('');
-              setResendSeconds(0);
-            }}
+          <Button title="Change Mobile" variant="ghost" onPress={resetFlow} />
+        </>
+      ) : step === 'register' ? (
+        <>
+          <Field label="First Name" value={firstName} onChangeText={setFirstName} placeholder="First name" />
+          <Field label="Last Name" value={lastName} onChangeText={setLastName} placeholder="Last name" />
+          <SelectBox
+            label="Store"
+            value={selectedStoreId}
+            placeholder="Loading stores..."
+            options={storeOptions}
+            onChange={(id) => setSelectedStoreId(Number(id))}
           />
+          <Field label="Address" value={address} onChangeText={setAddress} placeholder="House, street, area" multiline />
+          <Field
+            label="Pincode"
+            value={pincode}
+            onChangeText={(value) => setPincode(value.replace(/\D/g, '').slice(0, 6))}
+            keyboardType="number-pad"
+            placeholder="6-digit pincode"
+          />
+          <Message text={message} />
+          <Message text={success} tone="success" />
+          <Button title="Create account" loading={loading} onPress={handleRegister} />
+          <Button title="Back to OTP" variant="ghost" onPress={() => setStep('otp')} />
         </>
       ) : (
         <>
+          {activeCustomer ? <Text style={local.customerName}>{fullName(activeCustomer)}</Text> : null}
           <SelectBox
-            label="Select Store"
-            value={selectedCustomerId}
+            label="Store"
+            value={selectedStoreId}
             placeholder="No linked stores found"
-            options={customerOptions}
+            options={linkedStoreOptions}
             onChange={(id) => {
-              const customerId = Number(id);
-              setSelectedCustomerId(customerId);
-              void loginWithCustomer(customerId);
+              const store = linkedStores.find((item) => item.id === Number(id));
+              setSelectedStoreId(Number(id));
+              if (store) {
+                void finalizeStoreLogin(store);
+              }
             }}
           />
           <Message text={message} />
           <Message text={success} tone="success" />
-          <Button title="Back to OTP" variant="ghost" onPress={() => setStep('otp')} />
+          <Button
+            title="Back to OTP"
+            variant="ghost"
+            onPress={() => {
+              setStep('otp');
+              setSelectedStoreId(null);
+              setSuccess('');
+            }}
+          />
         </>
       )}
     </View>
@@ -196,60 +392,32 @@ const local = {
   card: {
     backgroundColor: brand.white,
     borderColor: 'rgba(52, 122, 0, 0.10)',
-    borderRadius: 24,
+    borderRadius: 22,
     borderWidth: 1,
-    boxShadow: '0 14px 34px rgba(31, 56, 20, 0.13)',
-    gap: 12,
-    padding: 16,
-  },
-  cardHandle: {
-    alignSelf: 'center' as const,
-    backgroundColor: 'rgba(52, 122, 0, 0.18)',
-    borderRadius: 999,
-    height: 3,
-    width: 42,
+    boxShadow: '0 12px 30px rgba(31, 56, 20, 0.12)',
+    gap: 14,
+    padding: 18,
   },
   cardIntro: {
-    gap: 6,
-    marginBottom: 2,
-  },
-  stepRow: {
     alignItems: 'center' as const,
-    alignSelf: 'center' as const,
-    flexDirection: 'row' as const,
-    marginBottom: 2,
-  },
-  stepDot: {
-    backgroundColor: '#EEF4EA',
-    borderRadius: 999,
-    color: brand.gray,
-    fontSize: 12,
-    fontWeight: '900' as const,
-    height: 24,
-    lineHeight: 24,
-    overflow: 'hidden' as const,
-    textAlign: 'center' as const,
-    width: 24,
-  },
-  stepDotActive: {
-    backgroundColor: brand.green,
-    color: brand.white,
-  },
-  stepLine: {
-    backgroundColor: '#DDE8D7',
-    height: 2,
-    width: 26,
+    gap: 4,
   },
   formTitle: {
     color: '#111B0D',
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '900' as const,
     textAlign: 'center' as const,
+    width: '100%' as const,
   },
-  formSub: {
-    color: '#64705E',
+  mobileHint: {
+    color: brand.gray,
     fontSize: 13,
-    lineHeight: 18,
+    fontWeight: '700' as const,
+  },
+  customerName: {
+    color: brand.black,
+    fontSize: 15,
+    fontWeight: '800' as const,
     textAlign: 'center' as const,
   },
   resendText: {

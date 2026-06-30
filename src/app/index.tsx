@@ -1,11 +1,19 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
-import { use } from 'react';
+import { use, useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { AppCard, AppShell, type AppSection, MenuGlyph, isAppSection } from '@/components/app-shell';
-import { Button, brand } from '@/components/cleanodry-ui';
+import { Button, Message, brand } from '@/components/cleanodry-ui';
+import {
+  ApiError,
+  getCustomerPackageLabels,
+  getStorePackages,
+  type CustomerPackageLabelsPayload,
+  type StorePackage,
+} from '@/lib/api';
 import { AuthContext } from '@/lib/auth-context';
+import { formatInr } from '@/lib/format';
 
 const serviceCards = [
   {
@@ -33,13 +41,6 @@ const serviceCards = [
     text: 'Deep cleaning and sanitization for upholstery.',
     image: require('@/assets/images/service-sofa.png'),
   },
-];
-
-const packageCards = [
-  { name: 'Premium Refresh', price: '₹5,000', discount: '20%', worth: '₹6,000' },
-  { name: 'Dynamic Deluxe', price: '₹10,000', discount: '25%', worth: '₹12,500' },
-  { name: 'Supreme Saver', price: '₹25,000', discount: '30%', worth: '₹26,000' },
-  { name: 'The Prive', price: '₹40,000', discount: '35%', worth: '₹54,000' },
 ];
 
 function HomeContent({ userName, mobile, storeName }: { userName: string; mobile: string; storeName?: string }) {
@@ -120,19 +121,120 @@ function ServicesContent() {
 }
 
 function PackagesContent() {
+  const auth = use(AuthContext);
+  const [customerPackages, setCustomerPackages] = useState<CustomerPackageLabelsPayload | null>(null);
+  const [storePackages, setStorePackages] = useState<StorePackage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    if (!auth.user?.token) {
+      return;
+    }
+
+    let mounted = true;
+    setLoading(true);
+    setMessage('');
+    Promise.all([
+      getCustomerPackageLabels(auth.user.token),
+      auth.user.store?.id ? getStorePackages(auth.user.token, auth.user.store.id) : Promise.resolve(null),
+    ])
+      .then(([nextCustomerPackages, nextStorePackages]) => {
+        if (!mounted) {
+          return;
+        }
+        setCustomerPackages(nextCustomerPackages);
+        setStorePackages(nextStorePackages?.packages ?? []);
+      })
+      .catch((error) => {
+        if (!mounted) {
+          return;
+        }
+        if (error instanceof ApiError && error.status === 401) {
+          auth.signOut();
+          return;
+        }
+        setMessage(error instanceof Error ? error.message : 'Could not load packages.');
+      })
+      .finally(() => {
+        if (mounted) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [auth.user?.token, auth.user?.store?.id, auth.signOut]);
+
+  function discountLabel(pkg: StorePackage) {
+    if (!pkg.discount_value) {
+      return 'Package';
+    }
+    if (pkg.discount_type === 'percent') {
+      return `${pkg.discount_value}% off`;
+    }
+    return `${formatInr(pkg.discount_value)} off`;
+  }
+
   return (
     <AppCard>
       <Text style={local.contentTitle}>Packages</Text>
       <Text style={local.contentText}>Prepaid care packs help regular customers save on every order.</Text>
-      {packageCards.map((pkg) => (
-        <View key={pkg.name} style={local.packageCard}>
-          <View>
-            <Text style={local.packageName}>{pkg.name}</Text>
-            <Text style={local.packageWorth}>Get services worth {pkg.worth}</Text>
+      <Message text={message} />
+      {loading ? <Text style={local.packageMuted}>Loading packages...</Text> : null}
+      {customerPackages?.has_package ? (
+        <View style={local.activePackageCard}>
+          <View style={local.activePackageHead}>
+            <View>
+              <Text style={local.activePackageLabel}>Your Package Balance</Text>
+              <Text selectable style={local.activePackageAmount}>
+                {formatInr(customerPackages.package_balance)}
+              </Text>
+            </View>
+            <Text style={local.activePackageStore}>{customerPackages.store_label || auth.user?.store?.name || 'Store'}</Text>
+          </View>
+          {customerPackages.packages.map((pkg) => (
+            <View key={String(pkg.id)} style={local.customerPackageRow}>
+              <Text selectable style={local.customerPackageName}>
+                {pkg.package_name}
+              </Text>
+              <Text selectable style={local.customerPackageLabel}>
+                {pkg.label}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : !loading && customerPackages ? (
+        <View style={local.noPackageCard}>
+          <Text style={local.noPackageTitle}>No active package</Text>
+          <Text style={local.noPackageText}>Available packages for your selected store are listed below.</Text>
+        </View>
+      ) : null}
+
+      <Text style={local.packageSectionTitle}>Available Packages</Text>
+      {!loading && customerPackages && storePackages.length === 0 ? (
+        <Text style={local.packageMuted}>No store packages found for your selected store.</Text>
+      ) : null}
+      {storePackages.map((pkg) => (
+        <View key={String(pkg.id)} style={local.packageCard}>
+          <View style={local.packageCopy}>
+            <Text selectable style={local.packageName}>
+              {pkg.name}
+            </Text>
+            <Text style={local.packageWorth}>{pkg.description || pkg.label || 'Prepaid package'}</Text>
+            {pkg.validity_days ? <Text style={local.packageMeta}>Valid for {pkg.validity_days} days</Text> : null}
+            {pkg.services?.length ? (
+              <Text style={local.packageMeta}>
+                Services: {pkg.services.map((service) => service.name).join(', ')}
+              </Text>
+            ) : null}
           </View>
           <View style={local.packagePriceBox}>
-            <Text style={local.packagePrice}>{pkg.price}</Text>
-            <Text style={local.packageDiscount}>{pkg.discount} off</Text>
+            <Text selectable style={local.packagePrice}>
+              {formatInr(pkg.amount)}
+            </Text>
+            <Text style={local.packageDiscount}>{discountLabel(pkg)}</Text>
           </View>
         </View>
       ))}
@@ -424,6 +526,98 @@ const local = {
     justifyContent: 'space-between' as const,
     padding: 14,
   },
+  activePackageCard: {
+    backgroundColor: '#EAF7E4',
+    borderColor: 'rgba(52, 122, 0, 0.22)',
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 10,
+    padding: 14,
+  },
+  activePackageHead: {
+    alignItems: 'flex-start' as const,
+    flexDirection: 'row' as const,
+    gap: 12,
+    justifyContent: 'space-between' as const,
+  },
+  activePackageLabel: {
+    color: '#56704A',
+    fontSize: 11,
+    fontWeight: '900' as const,
+    textTransform: 'uppercase' as const,
+  },
+  activePackageAmount: {
+    color: brand.greenDark,
+    fontSize: 24,
+    fontWeight: '900' as const,
+    lineHeight: 30,
+  },
+  activePackageStore: {
+    backgroundColor: brand.white,
+    borderRadius: 999,
+    color: brand.green,
+    flexShrink: 1,
+    fontSize: 11,
+    fontWeight: '900' as const,
+    overflow: 'hidden' as const,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    textAlign: 'center' as const,
+  },
+  customerPackageRow: {
+    backgroundColor: brand.white,
+    borderColor: 'rgba(52, 122, 0, 0.12)',
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 3,
+    padding: 11,
+  },
+  customerPackageName: {
+    color: '#111B0D',
+    fontSize: 13,
+    fontWeight: '900' as const,
+  },
+  customerPackageLabel: {
+    color: '#5F6C59',
+    fontSize: 11,
+    fontWeight: '700' as const,
+    lineHeight: 16,
+  },
+  noPackageCard: {
+    backgroundColor: '#FAFCF8',
+    borderColor: 'rgba(52, 122, 0, 0.12)',
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 3,
+    padding: 14,
+  },
+  noPackageTitle: {
+    color: '#111B0D',
+    fontSize: 14,
+    fontWeight: '900' as const,
+  },
+  noPackageText: {
+    color: brand.gray,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  packageSectionTitle: {
+    color: '#111B0D',
+    fontSize: 16,
+    fontWeight: '900' as const,
+    marginTop: 4,
+  },
+  packageMuted: {
+    color: brand.gray,
+    fontSize: 13,
+    fontWeight: '700' as const,
+    lineHeight: 18,
+    textAlign: 'center' as const,
+  },
+  packageCopy: {
+    flex: 1,
+    gap: 4,
+  },
   packageName: {
     color: brand.black,
     fontSize: 14,
@@ -433,6 +627,11 @@ const local = {
     color: brand.gray,
     fontSize: 12,
     marginTop: 3,
+  },
+  packageMeta: {
+    color: '#65715F',
+    fontSize: 11,
+    lineHeight: 15,
   },
   packagePriceBox: {
     alignItems: 'flex-end' as const,

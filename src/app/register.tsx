@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 
+import { AppFooter } from '@/components/app-shell';
 import { Button, Card, Field, Hero, Message, Screen, SelectBox } from '@/components/cleanodry-ui';
 import { getStores, registerCustomer, sendOtp, type Store } from '@/lib/api';
 
@@ -71,9 +72,8 @@ export default function RegisterScreen() {
         address: address.trim(),
         pincode,
       });
-      const otpData = await sendOtp(mobile);
-      const customerId = otpData.customer_id ?? otpData.customers?.[0]?.id ?? '';
-      router.replace({ pathname: '/', params: { mobile, customerId: String(customerId), otpSent: '1' } });
+      await sendOtp(mobile);
+      router.replace({ pathname: '/', params: { mobile, otpSent: '1' } });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not create account. Please try again.');
     } finally {
@@ -117,6 +117,7 @@ export default function RegisterScreen() {
         <Message text={message} />
         <Button title="Create Account and Send OTP" loading={loading} onPress={handleRegister} />
       </Card>
+      <AppFooter />
     </Screen>
   );
 }

@@ -1,4 +1,6 @@
 import { createContext, type PropsWithChildren, useCallback, useEffect, useMemo, useState } from 'react';
+import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
 import type { SessionUser } from '@/lib/api';
 
@@ -20,7 +22,12 @@ export const AuthContext = createContext<AuthContextValue>({
   signOut: () => undefined,
 });
 
-function readStoredUser() {
+async function readStoredUser() {
+  if (Platform.OS !== 'web') {
+    const raw = await SecureStore.getItemAsync(AUTH_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as SessionUser) : null;
+  }
+
   if (typeof localStorage === 'undefined') {
     return null;
   }
@@ -37,7 +44,16 @@ function readStoredUser() {
   }
 }
 
-function writeStoredUser(user: SessionUser | null) {
+async function writeStoredUser(user: SessionUser | null) {
+  if (Platform.OS !== 'web') {
+    if (!user) {
+      await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY);
+      return;
+    }
+    await SecureStore.setItemAsync(AUTH_STORAGE_KEY, JSON.stringify(user));
+    return;
+  }
+
   if (typeof localStorage === 'undefined') {
     return;
   }
@@ -55,18 +71,37 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setUser(readStoredUser());
-    setLoading(false);
+    let mounted = true;
+    readStoredUser()
+      .then((storedUser) => {
+        if (mounted) {
+          setUser(storedUser);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setUser(null);
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const signIn = useCallback((nextUser: SessionUser) => {
     setUser(nextUser);
-    writeStoredUser(nextUser);
+    void writeStoredUser(nextUser);
   }, []);
 
   const signOut = useCallback(() => {
     setUser(null);
-    writeStoredUser(null);
+    void writeStoredUser(null);
   }, []);
 
   const value = useMemo(

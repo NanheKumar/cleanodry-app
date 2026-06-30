@@ -11,17 +11,18 @@ export default function RootLayout() {
       <AuthProvider>
         <Stack
           screenOptions={{
+            headerShown: false,
             headerTintColor: '#347A00',
             headerTitleStyle: { fontWeight: '700' },
             contentStyle: { backgroundColor: '#FFFFFF' },
           }}>
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="login" options={{ headerShown: false }} />
-          <Stack.Screen name="register" options={{ title: 'Create Account' }} />
-          <Stack.Screen name="pickup" options={{ title: 'Schedule Pickup' }} />
-          <Stack.Screen name="orders" options={{ title: 'My Orders' }} />
-          <Stack.Screen name="pickups" options={{ title: 'My Pickups' }} />
-          <Stack.Screen name="profile" options={{ title: 'My Profile' }} />
+          <Stack.Screen name="index" />
+          <Stack.Screen name="login" />
+          <Stack.Screen name="register" />
+          <Stack.Screen name="pickup" />
+          <Stack.Screen name="orders" />
+          <Stack.Screen name="pickups" />
+          <Stack.Screen name="profile" />
         </Stack>
       </AuthProvider>
     </ThemeProvider>

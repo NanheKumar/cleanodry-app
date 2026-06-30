@@ -5,20 +5,25 @@ import { AppCard, AppShell, LoadingScreen } from '@/components/app-shell';
 import { Button, Field, Message, SelectBox, brand } from '@/components/cleanodry-ui';
 import { LoginCard } from '@/components/login-card';
 import { AuthContext } from '@/lib/auth-context';
-import { getCustomerDetails, getServices, getStores, schedulePickup, type Service, type Store } from '@/lib/api';
+import { ApiError, getCustomerDetails, getServices, getStores, schedulePickup, type Service, type Store } from '@/lib/api';
 
 const timeSlots = [
-  { id: '10-12', name: '10 AM - 12 PM' },
-  { id: '12-14', name: '12 PM - 2 PM' },
-  { id: '14-16', name: '2 PM - 4 PM' },
-  { id: '16-18', name: '4 PM - 6 PM' },
-  { id: '18-20', name: '6 PM - 8 PM' },
+  { id: '10-12', name: '10 AM - 12 PM', startHour: 10 },
+  { id: '12-14', name: '12 PM - 2 PM', startHour: 12 },
+  { id: '14-16', name: '2 PM - 4 PM', startHour: 14 },
+  { id: '16-18', name: '4 PM - 6 PM', startHour: 16 },
+  { id: '18-20', name: '6 PM - 8 PM', startHour: 18 },
 ];
 
-function tomorrowDate() {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  return date.toISOString().slice(0, 10);
+function localDateId(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function todayDate() {
+  return localDateId(new Date());
 }
 
 function pickupDateOptions() {
@@ -26,8 +31,8 @@ function pickupDateOptions() {
 
   return Array.from({ length: 7 }, (_, index) => {
     const date = new Date(today);
-    date.setDate(today.getDate() + index + 1);
-    const id = date.toISOString().slice(0, 10);
+    date.setDate(today.getDate() + index);
+    const id = localDateId(date);
     const label = date.toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
@@ -36,10 +41,20 @@ function pickupDateOptions() {
 
     return {
       id,
-      name: index === 0 ? `Tomorrow, ${label}` : label,
+      name: index === 0 ? `Today, ${label}` : index === 1 ? `Tomorrow, ${label}` : label,
       detail: id,
     };
   });
+}
+
+function pickupTimeOptions(pickupDate: string) {
+  if (pickupDate !== todayDate()) {
+    return timeSlots;
+  }
+
+  const minStart = new Date();
+  minStart.setHours(minStart.getHours() + 2);
+  return timeSlots.filter((slot) => slot.startHour >= minStart.getHours() + minStart.getMinutes() / 60);
 }
 
 export default function PickupScreen() {
@@ -53,7 +68,7 @@ export default function PickupScreen() {
   );
   const [mobile, setMobile] = useState(auth.user?.mobile ?? '');
   const [address, setAddress] = useState('');
-  const [pickupDate, setPickupDate] = useState(tomorrowDate());
+  const [pickupDate, setPickupDate] = useState(todayDate());
   const [pickupTime, setPickupTime] = useState('10-12');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
@@ -89,6 +104,10 @@ export default function PickupScreen() {
         }
       })
       .catch((error) => {
+        if (error instanceof ApiError && error.status === 401) {
+          auth.signOut();
+          return;
+        }
         setMessage(error instanceof Error ? error.message : 'Could not load saved customer address.');
       });
 
@@ -124,6 +143,13 @@ export default function PickupScreen() {
     [services],
   );
   const dateOptions = useMemo(() => pickupDateOptions(), []);
+  const availableTimeSlots = useMemo(() => pickupTimeOptions(pickupDate), [pickupDate]);
+
+  useEffect(() => {
+    if (availableTimeSlots.length > 0 && !availableTimeSlots.some((slot) => slot.id === pickupTime)) {
+      setPickupTime(availableTimeSlots[0].id);
+    }
+  }, [availableTimeSlots, pickupTime]);
 
   async function handleSubmit() {
     setMessage('');
@@ -138,6 +164,10 @@ export default function PickupScreen() {
     }
     if (address.trim().length < 5 || !pickupDate) {
       setMessage('Please enter address and pickup date.');
+      return;
+    }
+    if (!availableTimeSlots.some((slot) => slot.id === pickupTime)) {
+      setMessage('No valid pickup slots are left for today. Please select a later date.');
       return;
     }
 
@@ -156,6 +186,10 @@ export default function PickupScreen() {
       setSuccess(`Pickup request submitted. ID #${data.pickup_id}`);
       setNotes('');
     } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        auth.signOut();
+        return;
+      }
       setMessage(error instanceof Error ? error.message : 'Could not schedule pickup.');
     } finally {
       setLoading(false);
@@ -223,8 +257,8 @@ export default function PickupScreen() {
         <SelectBox
           label="Pickup Time"
           value={pickupTime}
-          placeholder="Select time slot"
-          options={timeSlots}
+          placeholder="No slots left today. Pick a later date."
+          options={availableTimeSlots}
           onChange={(id) => setPickupTime(String(id))}
         />
         <Field label="Notes" value={notes} onChangeText={setNotes} placeholder="Optional instructions" multiline />

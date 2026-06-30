@@ -7,6 +7,10 @@ export type Store = {
   code?: string;
 };
 
+export type StoreAccount = Store & {
+  customer_id: number;
+};
+
 export type Service = {
   id: number;
   name: string;
@@ -29,6 +33,70 @@ export type SessionUser = {
   mobile: string;
   store: Store | null;
   expiresAt?: string;
+};
+
+export type OtpVerification = {
+  success: boolean;
+  token_type: string;
+  selection_token: string;
+  expires_at?: string;
+  customer_exists?: boolean;
+  requires_store_selection?: boolean;
+  active_customer?: CustomerSummary | null;
+  active_store?: Store | null;
+  customers?: CustomerSummary[];
+};
+
+export type StoreNotification = {
+  id: number | string;
+  title?: string | null;
+  heading?: string | null;
+  message?: string | null;
+  body?: string | null;
+  description?: string | null;
+  created_at?: string | null;
+  published_at?: string | null;
+  read_at?: string | null;
+  is_read?: boolean | number;
+};
+
+export type CustomerPackageLabel = {
+  id: number;
+  package_id: number;
+  package_name: string;
+  balance: number;
+  label: string;
+  store_label?: string;
+};
+
+export type StorePackage = {
+  id: number;
+  name: string;
+  code?: string;
+  amount: number;
+  discount_type?: string;
+  discount_value?: number;
+  validity_days?: number;
+  description?: string | null;
+  is_active?: boolean;
+  label?: string;
+  services?: Service[];
+};
+
+export type CustomerPackageLabelsPayload = {
+  success: boolean;
+  customer?: Pick<CustomerSummary, "id" | "first_name" | "last_name" | "mobile">;
+  store_label?: string;
+  has_package: boolean;
+  package_balance: number;
+  packages: CustomerPackageLabel[];
+};
+
+export type StorePackagesPayload = {
+  success: boolean;
+  store?: Store & { label?: string };
+  package_count?: number;
+  packages: StorePackage[];
 };
 
 export class ApiError extends Error {
@@ -60,7 +128,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   });
   const payload = await response.json().catch(() => ({}));
 
-  if (!response.ok) {
+  if (
+    !response.ok ||
+    (typeof payload === "object" &&
+      payload &&
+      "success" in payload &&
+      (payload as { success?: boolean }).success === false)
+  ) {
     const message =
       typeof payload === "object" && payload && "message" in payload
         ? String((payload as { message?: string }).message)
@@ -72,7 +146,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export async function getStores() {
-  return request<Store[]>("/stores");
+  const payload = await request<Store[] | { stores?: Store[]; data?: Store[] }>("/stores");
+  return Array.isArray(payload) ? payload : (payload.stores ?? payload.data ?? []);
+}
+
+export async function getStoresForMobile(mobile: string) {
+  const payload = await request<
+    StoreAccount[] | { customer_exists?: boolean; stores?: StoreAccount[]; data?: StoreAccount[] }
+  >(`/stores?mobile=${encodeURIComponent(normalizeMobile(mobile))}`);
+  return Array.isArray(payload) ? payload : (payload.stores ?? payload.data ?? []);
 }
 
 export async function getServices() {
@@ -82,9 +164,8 @@ export async function getServices() {
 export async function sendOtp(mobile: string) {
   return request<{
     success: boolean;
-    customers?: CustomerSummary[];
-    customer_id?: number;
-    debug_otp?: string;
+    customer_exists?: boolean;
+    mobile?: string;
     message?: string;
   }>("/whatsapp/otp", {
     method: "POST",
@@ -92,21 +173,27 @@ export async function sendOtp(mobile: string) {
   });
 }
 
-export async function verifyOtp(params: {
-  mobile: string;
-  otp: string;
-  customerId: number;
-}) {
+export async function verifyOtp(params: { mobile: string; otp: string }) {
+  return request<OtpVerification>("/whatsapp/otp/verify", {
+    method: "POST",
+    body: JSON.stringify({
+      mobile: normalizeMobile(params.mobile),
+      otp: params.otp,
+    }),
+  });
+}
+
+export async function selectStore(params: { selectionToken: string; storeId: number; customerId: number }) {
   const data = await request<{
     success: boolean;
     access_token: string;
     expires_at?: string;
     customer: CustomerSummary;
-  }>("/whatsapp/otp/verify", {
+  }>("/whatsapp/otp/select-store", {
     method: "POST",
+    headers: { Authorization: `Bearer ${params.selectionToken}` },
     body: JSON.stringify({
-      mobile: normalizeMobile(params.mobile),
-      otp: params.otp,
+      store_id: params.storeId,
       customer_id: params.customerId,
     }),
   });
@@ -185,6 +272,37 @@ export async function getCustomerDetails(token: string) {
   );
 }
 
+export async function updateCustomer(
+  token: string,
+  params: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    gender: string;
+    address: string;
+    pincode: string;
+    gstNo: string;
+  },
+) {
+  return request<{
+    success: boolean;
+    message?: string;
+    customer?: Record<string, unknown>;
+  }>("/customer-update", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      first_name: params.firstName,
+      last_name: params.lastName,
+      email: params.email,
+      gender: params.gender,
+      address: params.address,
+      pincode: params.pincode,
+      gst_no: params.gstNo,
+    }),
+  });
+}
+
 export async function getCustomerPickups(token: string) {
   return request<{ success: boolean; pickups: Record<string, unknown>[] }>(
     "/customer-pickups",
@@ -201,4 +319,44 @@ export async function getCustomerOrders(token: string) {
       headers: { Authorization: `Bearer ${token}` },
     },
   );
+}
+
+export async function getCustomerPackageLabels(token: string) {
+  return request<CustomerPackageLabelsPayload>("/customer-package-labels", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function getStorePackages(token: string, storeId: number) {
+  return request<StorePackagesPayload>(`/store-packages?store_id=${encodeURIComponent(String(storeId))}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+type StoreNotificationsPayload =
+  | StoreNotification[]
+  | {
+      success?: boolean;
+      data?: StoreNotification[];
+      notifications?: StoreNotification[];
+      unread_count?: number;
+    };
+
+export async function getStoreNotifications(token: string, limit = 20) {
+  const payload = await request<StoreNotificationsPayload>(
+    `/store-notifications?limit=${encodeURIComponent(String(limit))}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+
+  const notifications = Array.isArray(payload)
+    ? payload
+    : (payload.notifications ?? payload.data ?? []);
+  const unreadCount = Array.isArray(payload)
+    ? notifications.filter((item) => !item.read_at && item.is_read !== true && item.is_read !== 1).length
+    : (payload.unread_count ??
+      notifications.filter((item) => !item.read_at && item.is_read !== true && item.is_read !== 1).length);
+
+  return { notifications, unreadCount };
 }

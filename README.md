@@ -145,6 +145,7 @@ Used endpoints include:
 - `/services`
 - `/whatsapp/otp`
 - `/whatsapp/otp/verify`
+- `/whatsapp/otp/select-store`
 - `/customer-register`
 - `/pickups`
 - `/customer-details`
