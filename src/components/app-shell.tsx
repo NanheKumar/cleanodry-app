@@ -451,7 +451,14 @@ export function PageHeader({
 export function LoadingScreen({ label = 'Loading Cleanodry...' }: { label?: string }) {
   return (
     <Screen contentContainerStyle={styles.loadingScreen}>
-      <ActivityIndicator color={brand.green} size="large" />
+      <Image
+        source={require('@/assets/images/logo-color.png')}
+        style={styles.loadingLogo}
+        contentFit="contain"
+        accessibilityLabel="Cleanodry"
+      />
+      <Text style={styles.loadingSubtitle}>Premium Garment Care</Text>
+      <ActivityIndicator color={brand.green} size="large" style={styles.loadingSpinner} />
       <Text style={styles.loadingText}>{label}</Text>
     </Screen>
   );
@@ -684,6 +691,21 @@ const styles = {
     flexGrow: 1,
     gap: 12,
     justifyContent: 'center' as const,
+  },
+  loadingLogo: {
+    height: 56,
+    marginBottom: 2,
+    width: 180,
+  },
+  loadingSubtitle: {
+    color: brand.gray,
+    fontSize: 12,
+    fontWeight: '700' as const,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase' as const,
+  },
+  loadingSpinner: {
+    marginTop: 10,
   },
   loadingText: {
     color: brand.green,

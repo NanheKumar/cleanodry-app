@@ -45,6 +45,33 @@ const serviceCards = [
   },
 ];
 
+const supportPhoneNumber = '+917428380598';
+const supportWhatsappNumber = '+918448780540';
+const whatsappUrl = 'https://wa.me/918448780540';
+
+async function openSupportLink(url: string) {
+  const canOpen = await Linking.canOpenURL(url).catch(() => false);
+  if (canOpen) {
+    await Linking.openURL(url);
+  }
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function SupportActionIcon({ type }: { type: 'call' | 'whatsapp' }) {
+  return (
+    <View style={[local.supportIcon, type === 'whatsapp' ? local.whatsappIcon : null]}>
+      {type === 'call' ? (
+        <Text style={local.callIconText}>☎</Text>
+      ) : (
+        <Image source={require('@/assets/images/whatsapp-icon.png')} style={local.whatsappIconImage} contentFit="contain" />
+      )}
+    </View>
+  );
+}
+
 function HomeContent({ userName, mobile, storeName }: { userName: string; mobile: string; storeName?: string }) {
   return (
     <>
@@ -179,6 +206,16 @@ function PackagesContent() {
     return `${formatInr(pkg.discount_value)} off`;
   }
 
+  function packageOffer(pkg: StorePackage) {
+    const rawName = String(pkg.name ?? '').trim();
+    const description = String(pkg.description || pkg.label || '').trim();
+    if (!description) {
+      return '';
+    }
+
+    return description.replace(new RegExp(escapeRegExp(rawName), 'gi'), '').replace(/\s+/g, ' ').trim();
+  }
+
   return (
     <AppCard>
       <Text style={local.contentTitle}>Packages</Text>
@@ -224,12 +261,19 @@ function PackagesContent() {
             <Text selectable style={local.packageName}>
               {pkg.name}
             </Text>
-            <Text style={local.packageWorth}>{pkg.description || pkg.label || 'Prepaid package'}</Text>
+            {packageOffer(pkg) ? <Text style={local.packageWorth}>{packageOffer(pkg)}</Text> : null}
             {pkg.validity_days ? <Text style={local.packageMeta}>Valid for {pkg.validity_days} days</Text> : null}
             {pkg.services?.length ? (
-              <Text style={local.packageMeta}>
-                Services: {pkg.services.map((service) => service.name).join(', ')}
-              </Text>
+              <View style={local.packageServices}>
+                <Text style={local.packageServicesTitle}>Services</Text>
+                <View style={local.packageServiceList}>
+                  {pkg.services.map((service) => (
+                    <Text key={String(service.id)} style={local.packageServiceChip}>
+                      {service.name}
+                    </Text>
+                  ))}
+                </View>
+              </View>
             ) : null}
           </View>
           <View style={local.packagePriceBox}>
@@ -353,22 +397,30 @@ function SupportContent() {
     <AppCard>
       <Text style={local.contentTitle}>Need help?</Text>
       <Text style={local.contentText}>Premium Support is available from 10:00 AM to 08:00 PM.</Text>
-      <Pressable style={local.supportRow} onPress={() => Linking.openURL('tel:+917428380598')}>
-        <View style={local.supportIcon}>
-          <MenuGlyph name="support" active />
-        </View>
+      <Pressable
+        style={local.supportRow}
+        onPress={() => {
+          void openSupportLink(`tel:${supportPhoneNumber}`);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Call Cleanodry">
+        <SupportActionIcon type="call" />
         <View style={local.supportCopy}>
           <Text style={local.supportTitle}>Call Cleanodry</Text>
           <Text style={local.supportSub}>+91-7428380598</Text>
         </View>
       </Pressable>
-      <Pressable style={local.supportRow} onPress={() => Linking.openURL('https://wa.me/917428380598')}>
-        <View style={local.supportIcon}>
-          <MenuGlyph name="support" active />
-        </View>
+      <Pressable
+        style={local.supportRow}
+        onPress={() => {
+          void openSupportLink(whatsappUrl);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Chat with Cleanodry on WhatsApp">
+        <SupportActionIcon type="whatsapp" />
         <View style={local.supportCopy}>
           <Text style={local.supportTitle}>Chat on WhatsApp</Text>
-          <Text style={local.supportSub}>Fast help for pickup and orders</Text>
+          <Text style={local.supportSub}>{supportWhatsappNumber}</Text>
         </View>
       </Pressable>
     </AppCard>
@@ -593,7 +645,7 @@ const local = {
     paddingHorizontal: 14,
   },
   packageCard: {
-    alignItems: 'center' as const,
+    alignItems: 'flex-start' as const,
     backgroundColor: '#F6FAF3',
     borderColor: 'rgba(52, 122, 0, 0.14)',
     borderRadius: 18,
@@ -710,8 +762,37 @@ const local = {
     fontSize: 11,
     lineHeight: 15,
   },
+  packageServices: {
+    gap: 6,
+    marginTop: 2,
+  },
+  packageServicesTitle: {
+    color: '#65715F',
+    fontSize: 11,
+    fontWeight: '900' as const,
+    textTransform: 'uppercase' as const,
+  },
+  packageServiceList: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: 6,
+  },
+  packageServiceChip: {
+    backgroundColor: brand.white,
+    borderColor: 'rgba(52, 122, 0, 0.14)',
+    borderRadius: 999,
+    borderWidth: 1,
+    color: '#52614B',
+    fontSize: 10,
+    fontWeight: '800' as const,
+    overflow: 'hidden' as const,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
   packagePriceBox: {
     alignItems: 'flex-end' as const,
+    gap: 2,
+    paddingTop: 28,
   },
   packagePrice: {
     color: brand.green,
@@ -833,6 +914,19 @@ const local = {
     borderRadius: 16,
     height: 42,
     justifyContent: 'center' as const,
+    width: 42,
+  },
+  whatsappIcon: {
+    backgroundColor: brand.white,
+  },
+  callIconText: {
+    color: brand.white,
+    fontSize: 18,
+    fontWeight: '900' as const,
+    lineHeight: 22,
+  },
+  whatsappIconImage: {
+    height: 42,
     width: 42,
   },
   supportCopy: {
