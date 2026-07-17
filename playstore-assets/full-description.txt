@@ -1,0 +1,14 @@
+Cleanodry helps customers manage laundry and dry-cleaning services from their phone.
+
+Use the app to sign in with OTP, book pickup requests, view available services, track orders, and access profile and invoice information from one place. Customers can also receive service updates through push notifications when enabled.
+
+Key features:
+- OTP-based customer login
+- Pickup booking for laundry and dry-cleaning services
+- Order and pickup request tracking
+- Customer profile access
+- Invoice access where available
+- Store-linked customer experience
+- Push notifications for important updates
+
+Cleanodry is designed for customers of participating Cleanodry stores. Availability of services, pricing, pickup slots, order details, invoices, and notifications may depend on the selected store and backend records.

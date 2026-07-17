@@ -5,11 +5,13 @@ node_modules/
 
 # Expo
 .expo/
+.gradle-cache/
 dist/
 web-build/
 expo-env.d.ts
 
 # Native
+android/local.properties
 .kotlin/
 *.orig.*
 *.jks

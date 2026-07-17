@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Local build/cache output
+.gradle-cache/
+.expo/
+dist/
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+ios/build/
+ios/Pods/
+
+# VCS and local metadata
+.git/
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Store listing assets are not needed for native builds
+playstore-assets/

@@ -1,5 +1,10 @@
-export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://staging.petqc.com/api";
+const configuredApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+
+if (!configuredApiBaseUrl) {
+  throw new Error("Missing required Expo configuration: EXPO_PUBLIC_API_BASE_URL must be set.");
+}
+
+export const API_BASE_URL = configuredApiBaseUrl.replace(/\/+$/, "");
 
 export type Store = {
   id: number;
@@ -323,6 +328,28 @@ export async function updateCustomer(
   });
 }
 
+export async function deleteCustomerAccount(token: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    return await request<{ success: boolean; message?: string }>("/customer-delete", {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ApiError("Request timed out. Please check your connection and try again.", 0);
+    }
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError("Network error. Please check your connection and try again.", 0);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function getCustomerPickups(token: string) {
   return request<{ success: boolean; pickups: Record<string, unknown>[] }>(
     "/customer-pickups",
@@ -379,4 +406,68 @@ export async function getStoreNotifications(token: string, limit = 20) {
       notifications.filter((item) => !item.read_at && item.is_read !== true && item.is_read !== 1).length);
 
   return { notifications, unreadCount };
+}
+
+export async function registerCustomerFcmToken(
+  token: string,
+  params: {
+    fcmToken: string;
+    platform?: string;
+    deviceName?: string;
+    appVersion?: string;
+  },
+) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  const path = "/customer-fcm-token";
+  const body = JSON.stringify({
+    token: params.fcmToken,
+    platform: params.platform,
+    device_name: params.deviceName,
+    app_version: params.appVersion,
+  });
+
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body,
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (
+      !response.ok ||
+      (typeof payload === "object" &&
+        payload &&
+        "success" in payload &&
+        (payload as { success?: boolean }).success === false)
+    ) {
+      const message =
+        typeof payload === "object" && payload && "message" in payload
+          ? String((payload as { message?: string }).message)
+          : "FCM token registration failed.";
+      throw new ApiError(message, response.status, payload);
+    }
+
+    return {
+      ...(payload as { success?: boolean; message?: string }),
+      status: response.status,
+      success: true,
+    };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ApiError("FCM token registration timed out.", 0);
+    }
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError("FCM token registration network error.", 0);
+  } finally {
+    clearTimeout(timeout);
+  }
 }

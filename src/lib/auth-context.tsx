@@ -9,7 +9,7 @@ type AuthContextValue = {
   loading: boolean;
   isLoggedIn: boolean;
   signIn: (user: SessionUser) => void;
-  signOut: () => void;
+  signOut: () => Promise<void>;
 };
 
 const AUTH_STORAGE_KEY = 'cleanodry.session';
@@ -19,7 +19,7 @@ export const AuthContext = createContext<AuthContextValue>({
   loading: true,
   isLoggedIn: false,
   signIn: () => undefined,
-  signOut: () => undefined,
+  signOut: async () => undefined,
 });
 
 async function readStoredUser() {
@@ -99,9 +99,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
     void writeStoredUser(nextUser);
   }, []);
 
-  const signOut = useCallback(() => {
+  const signOut = useCallback(async () => {
     setUser(null);
-    void writeStoredUser(null);
+    await writeStoredUser(null);
   }, []);
 
   const value = useMemo(

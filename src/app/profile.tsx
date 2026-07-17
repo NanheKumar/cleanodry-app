@@ -1,13 +1,16 @@
-import { use, useEffect, useState } from 'react';
-import { Text, type TextStyle, View } from 'react-native';
+import { router } from 'expo-router';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, Linking, Pressable, Text, type TextStyle, View } from 'react-native';
 
 import { AppCard, AppShell } from '@/components/app-shell';
 import { Button, Field, Message, SelectBox, brand } from '@/components/cleanodry-ui';
-import { ApiError, getCustomerDetails, updateCustomer } from '@/lib/api';
+import { ApiError, deleteCustomerAccount, getCustomerDetails, updateCustomer } from '@/lib/api';
 import { AuthContext } from '@/lib/auth-context';
 import { formatInr } from '@/lib/format';
+import { clearLocalFcmRegistrationState } from '@/lib/push-notifications';
 
 const tabularNums: TextStyle['fontVariant'] = ['tabular-nums'];
+const ACCOUNT_DELETION_POLICY_URL = 'https://www.cleanodry.com/account-deletion';
 
 function textValue(value: unknown, fallback = 'Not added') {
   const text = String(value ?? '').trim();
@@ -27,11 +30,15 @@ function DetailItem({ label, value }: { label: string; value: string }) {
 
 export default function ProfileScreen() {
   const auth = use(AuthContext);
+  const user = auth.user;
+  const signOut = auth.signOut;
+  const deletionInFlight = useRef(false);
   const [customer, setCustomer] = useState<Record<string, unknown> | null>(null);
   const [message, setMessage] = useState('');
   const [success, setSuccess] = useState('');
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [form, setForm] = useState({
     firstName: '',
     lastName: '',
@@ -42,35 +49,35 @@ export default function ProfileScreen() {
     gstNo: '',
   });
 
-  function fillForm(nextCustomer: Record<string, unknown> | null) {
+  const fillForm = useCallback((nextCustomer: Record<string, unknown> | null) => {
     setForm({
-      firstName: String(nextCustomer?.first_name ?? auth.user?.firstName ?? '').trim(),
-      lastName: String(nextCustomer?.last_name ?? auth.user?.lastName ?? '').trim(),
+      firstName: String(nextCustomer?.first_name ?? user?.firstName ?? '').trim(),
+      lastName: String(nextCustomer?.last_name ?? user?.lastName ?? '').trim(),
       email: String(nextCustomer?.email ?? '').trim(),
       gender: String(nextCustomer?.gender ?? '').trim().toLowerCase(),
       address: String(nextCustomer?.address ?? '').trim(),
       pincode: String(nextCustomer?.pincode ?? '').trim(),
       gstNo: String(nextCustomer?.gst_no ?? '').trim(),
     });
-  }
+  }, [user?.firstName, user?.lastName]);
 
   useEffect(() => {
-    if (!auth.user) {
+    if (!user) {
       return;
     }
-    getCustomerDetails(auth.user.token)
+    getCustomerDetails(user.token)
       .then((data) => {
         setCustomer(data.customer);
         fillForm(data.customer);
       })
       .catch((error) => {
         if (error instanceof ApiError && error.status === 401) {
-          auth.signOut();
+          signOut();
           return;
         }
         setMessage(error instanceof Error ? error.message : 'Could not load profile.');
       });
-  }, [auth.user]);
+  }, [fillForm, signOut, user]);
 
   const store = customer?.store as Record<string, unknown> | null | undefined;
   const wallet = customer?.wallet as Record<string, unknown> | null | undefined;
@@ -148,6 +155,110 @@ export default function ProfileScreen() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function accountDeletionErrorMessage(error: unknown) {
+    if (error instanceof ApiError) {
+      switch (error.status) {
+        case 0:
+          return error.message || 'Network error. Please check your connection and try again.';
+        case 401:
+          return 'Your session has expired. Please log in again before requesting account deletion.';
+        case 403:
+          return 'Account deletion is not allowed for this account right now. Please contact Cleanodry support.';
+        case 404:
+          return 'We could not find this account for deletion. Please contact Cleanodry support.';
+        case 422:
+          return error.message || 'This account cannot be deleted right now. Please contact Cleanodry support.';
+        case 429:
+          return 'Too many deletion requests. Please wait and try again later.';
+        default:
+          if (error.status >= 500) {
+            return 'Cleanodry servers are unavailable right now. Please try again later.';
+          }
+          return error.message || 'Could not delete your account. Please try again.';
+      }
+    }
+
+    return error instanceof Error ? error.message : 'Could not delete your account. Please try again.';
+  }
+
+  async function openAccountDeletionPolicy() {
+    try {
+      const url = new URL(ACCOUNT_DELETION_POLICY_URL);
+      if (url.protocol !== 'https:' || url.hostname !== 'www.cleanodry.com') {
+        setMessage('Account deletion policy link is not trusted.');
+        return;
+      }
+
+      const canOpen = await Linking.canOpenURL(ACCOUNT_DELETION_POLICY_URL);
+      if (!canOpen) {
+        setMessage('Could not open the account deletion policy on this device.');
+        return;
+      }
+      await Linking.openURL(ACCOUNT_DELETION_POLICY_URL);
+    } catch {
+      setMessage('Could not open the account deletion policy on this device.');
+    }
+  }
+
+  async function performAccountDeletion() {
+    if (!auth.user?.token || deletionInFlight.current) {
+      return;
+    }
+
+    deletionInFlight.current = true;
+    setDeletingAccount(true);
+    setMessage('');
+    setSuccess('');
+
+    try {
+      await deleteCustomerAccount(auth.user.token);
+      setCustomer(null);
+      await clearLocalFcmRegistrationState();
+      await auth.signOut();
+      router.replace('/login');
+      Alert.alert('Account deletion completed', 'Your Cleanodry account deletion request has been completed.');
+    } catch (error) {
+      setMessage(accountDeletionErrorMessage(error));
+    } finally {
+      deletionInFlight.current = false;
+      setDeletingAccount(false);
+    }
+  }
+
+  function confirmAccountDeletion() {
+    if (deletingAccount) {
+      return;
+    }
+
+    Alert.alert(
+      'Delete your account?',
+      'This action is permanent. You will lose access to your Cleanodry profile, saved addresses, notifications, and customer app data. Some order or invoice records may be retained where legally required.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Confirm account deletion',
+              'Are you sure you want to permanently delete your Cleanodry account?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete Account',
+                  style: 'destructive',
+                  onPress: () => {
+                    void performAccountDeletion();
+                  },
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
   }
 
   return (
@@ -268,6 +379,38 @@ export default function ProfileScreen() {
           </>
         )}
       </AppCard>
+      {auth.user ? (
+        <AppCard>
+          <View style={styles.dangerSection}>
+            <View style={styles.dangerCopy}>
+              <Text style={styles.dangerTitle}>Delete Account</Text>
+              <Text selectable style={styles.dangerText}>
+                Deleting your account is permanent. Your profile and app access will be removed. Some order, invoice,
+                payment, tax, or legal records may be retained where required.
+              </Text>
+              <Pressable
+                disabled={deletingAccount}
+                onPress={() => {
+                  setMessage('');
+                  void openAccountDeletionPolicy();
+                }}
+                accessibilityRole="link">
+                <Text style={styles.policyLink}>Account Deletion Policy</Text>
+              </Pressable>
+            </View>
+            <Pressable
+              disabled={deletingAccount}
+              onPress={confirmAccountDeletion}
+              style={({ pressed }) => [
+                styles.deleteButton,
+                pressed ? styles.deleteButtonPressed : null,
+                deletingAccount ? styles.deleteButtonDisabled : null,
+              ]}>
+              <Text style={styles.deleteButtonText}>{deletingAccount ? 'Deleting...' : 'Delete Account'}</Text>
+            </Pressable>
+          </View>
+        </AppCard>
+      ) : null}
     </AppShell>
   );
 }
@@ -373,5 +516,48 @@ const styles = {
     fontSize: 14,
     fontWeight: '800' as const,
     lineHeight: 20,
+  },
+  dangerSection: {
+    gap: 16,
+  },
+  dangerCopy: {
+    gap: 8,
+  },
+  dangerTitle: {
+    color: brand.danger,
+    fontSize: 18,
+    fontWeight: '900' as const,
+  },
+  dangerText: {
+    color: '#6B4B45',
+    fontSize: 14,
+    fontWeight: '700' as const,
+    lineHeight: 21,
+  },
+  policyLink: {
+    color: brand.greenDark,
+    fontSize: 14,
+    fontWeight: '900' as const,
+    textDecorationLine: 'underline' as const,
+  },
+  deleteButton: {
+    alignItems: 'center' as const,
+    backgroundColor: brand.danger,
+    borderRadius: 14,
+    justifyContent: 'center' as const,
+    minHeight: 48,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+  },
+  deleteButtonPressed: {
+    opacity: 0.82,
+  },
+  deleteButtonDisabled: {
+    opacity: 0.6,
+  },
+  deleteButtonText: {
+    color: brand.white,
+    fontSize: 15,
+    fontWeight: '900' as const,
   },
 };

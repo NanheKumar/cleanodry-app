@@ -53,13 +53,13 @@ cp .env.example .env.local
 If `.env.example` is not available, create `.env.local` manually:
 
 ```bash
-EXPO_PUBLIC_API_BASE_URL=https://your-api-domain.com/api
+EXPO_PUBLIC_API_BASE_URL=https://api.cleanodry.com/api
 ```
 
-If this variable is not set, the app uses:
+If this variable is not set, the app fails with a configuration error.
 
 ```bash
-https://staging.petqc.com/api
+EXPO_PUBLIC_API_BASE_URL=https://api.cleanodry.com/api
 ```
 
 ## Start Development Server
@@ -269,8 +269,8 @@ If native builds fail, make sure Android Studio or Xcode is installed correctly.
 - Restart the dev server after changing `.env.local`.
 - Keep `package-lock.json` committed so every developer installs the same dependency versions.
 - The app scheme is `cleanodryapp`.
-- Android package is `com.nanhe4it.cleanodryapp`.
-- iOS bundle identifier is `com.nanhe4it.cleanodryapp`.
+- Android package is `com.cleanodry.app`.
+- iOS bundle identifier is `com.cleanodry.app`.
 
 ## References
 

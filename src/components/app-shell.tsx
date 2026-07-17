@@ -1,11 +1,17 @@
 import { Redirect, router } from 'expo-router';
 import { Image } from 'expo-image';
-import { type PropsWithChildren, type ReactNode, use, useEffect, useState } from 'react';
+import { type PropsWithChildren, type ReactNode, use, useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 
 import { Button, Screen, brand } from '@/components/cleanodry-ui';
 import { getStoreNotifications, type StoreNotification } from '@/lib/api';
 import { AuthContext } from '@/lib/auth-context';
+import {
+  addPushTokenRefreshListener,
+  addStoreNotificationListeners,
+  logFcmRegistrationFailure,
+  registerForPushNotifications,
+} from '@/lib/push-notifications';
 
 export const appBackground = '#F4FAF1';
 const appVersion = '1.0';
@@ -528,7 +534,7 @@ export function AppShell({
   const [notificationMessage, setNotificationMessage] = useState('');
   const { height } = useWindowDimensions();
 
-  useEffect(() => {
+  const loadNotifications = useCallback((showLoading = true) => {
     if (!auth.user) {
       setNotifications([]);
       setNotificationCount(0);
@@ -537,7 +543,9 @@ export function AppShell({
     }
 
     let mounted = true;
-    setNotificationsLoading(true);
+    if (showLoading) {
+      setNotificationsLoading(true);
+    }
     getStoreNotifications(auth.user.token, 20)
       .then((data) => {
         if (!mounted) {
@@ -565,6 +573,41 @@ export function AppShell({
       mounted = false;
     };
   }, [auth.user]);
+
+  useEffect(() => loadNotifications(), [loadNotifications]);
+
+  useEffect(() => {
+    if (!auth.user?.token) {
+      return;
+    }
+
+    void registerForPushNotifications(auth.user.token, auth.user.customerId, auth.user.store?.id).catch((error) => {
+      logFcmRegistrationFailure(error, 'authenticated_session');
+    });
+  }, [auth.user?.customerId, auth.user?.store?.id, auth.user?.token]);
+
+  useEffect(() => {
+    if (!auth.user?.token) {
+      return;
+    }
+
+    const removeNotificationListeners = addStoreNotificationListeners(() => {
+      loadNotifications(false);
+    });
+    const removePushTokenListener = addPushTokenRefreshListener(
+      auth.user.token,
+      auth.user.customerId,
+      auth.user.store?.id,
+      (error) => {
+        logFcmRegistrationFailure(error, 'push_token_refresh');
+      },
+    );
+
+    return () => {
+      removeNotificationListeners();
+      removePushTokenListener();
+    };
+  }, [auth.user?.customerId, auth.user?.store?.id, auth.user?.token, loadNotifications]);
 
   if (auth.loading) {
     return <LoadingScreen />;

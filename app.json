@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "cleanodry-app",
-    "slug": "cleanodry-app",
+    "name": "Cleanodry",
+    "slug": "cleanodry",
+    "owner": "cleanodry-solutions-pvt-ltd",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -9,7 +10,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.nanhe4it.cleanodryapp",
+      "bundleIdentifier": "com.cleanodry.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -22,7 +23,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.nanhe4it.cleanodryapp"
+      "package": "com.cleanodry.app",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "output": "static",
@@ -30,6 +32,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-notifications",
       [
         "expo-splash-screen",
         {
@@ -48,7 +51,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "5f95070e-a074-4e09-9566-61f1fbc39138"
+        "projectId": "190ea2d2-6ce8-4b6f-b522-c21246f06651"
       }
     }
   }
