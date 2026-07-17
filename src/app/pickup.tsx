@@ -1,5 +1,5 @@
 import { use, useEffect, useMemo, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { AppCard, AppShell, LoadingScreen } from '@/components/app-shell';
 import { Button, Field, Message, SelectBox, brand } from '@/components/cleanodry-ui';
@@ -71,6 +71,9 @@ export default function PickupScreen() {
   const [pickupDate, setPickupDate] = useState(todayDate());
   const [pickupTime, setPickupTime] = useState('10-12');
   const [notes, setNotes] = useState('');
+  const [servicePickerOpen, setServicePickerOpen] = useState(false);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [success, setSuccess] = useState('');
@@ -142,8 +145,11 @@ export default function PickupScreen() {
     () => services.map((service) => ({ id: service.id, name: service.name, detail: service.code })),
     [services],
   );
+  const selectedService = serviceOptions.find((service) => Number(service.id) === serviceId);
   const dateOptions = useMemo(() => pickupDateOptions(), []);
+  const selectedDate = dateOptions.find((date) => String(date.id) === pickupDate);
   const availableTimeSlots = useMemo(() => pickupTimeOptions(pickupDate), [pickupDate]);
+  const selectedTime = availableTimeSlots.find((slot) => String(slot.id) === pickupTime);
 
   useEffect(() => {
     if (availableTimeSlots.length > 0 && !availableTimeSlots.some((slot) => slot.id === pickupTime)) {
@@ -239,29 +245,129 @@ export default function PickupScreen() {
             placeholder="10-digit number"
           />
         ) : null}
-        <Field label="Address" value={address} onChangeText={setAddress} placeholder="Pickup address" multiline />
-        <SelectBox
-          label="Service"
-          value={serviceId}
-          placeholder="Loading services..."
-          options={serviceOptions}
-          onChange={(id) => setServiceId(Number(id))}
-        />
-        <SelectBox
-          label="Pickup Date"
-          value={pickupDate}
-          placeholder="Select pickup date"
-          options={dateOptions}
-          onChange={(id) => setPickupDate(String(id))}
-        />
-        <SelectBox
-          label="Pickup Time"
-          value={pickupTime}
-          placeholder="No slots left today. Pick a later date."
-          options={availableTimeSlots}
-          onChange={(id) => setPickupTime(String(id))}
-        />
-        <Field label="Notes" value={notes} onChangeText={setNotes} placeholder="Optional instructions" multiline />
+        <Field label="Address" value={address} onChangeText={setAddress} placeholder="Pickup address" />
+        <View style={local.servicePicker}>
+          <Text style={local.servicePickerLabel}>Service</Text>
+          <Pressable
+            style={local.servicePickerButton}
+            onPress={() => setServicePickerOpen((open) => !open)}
+            accessibilityRole="button"
+            accessibilityLabel="Select service">
+            <View style={local.servicePickerCopy}>
+              <Text style={local.servicePickerTitle}>{selectedService?.name ?? 'Loading services...'}</Text>
+              {selectedService?.detail ? <Text style={local.servicePickerDetail}>{selectedService.detail}</Text> : null}
+            </View>
+            <Text style={local.servicePickerArrow}>{servicePickerOpen ? '▲' : '▼'}</Text>
+          </Pressable>
+          {servicePickerOpen ? (
+            <View style={local.servicePickerOptions}>
+              {serviceOptions.length === 0 ? <Text style={local.servicePickerEmpty}>Loading services...</Text> : null}
+              {serviceOptions.map((service) => {
+                const selected = Number(service.id) === serviceId;
+                return (
+                  <Pressable
+                    key={String(service.id)}
+                    style={[local.servicePickerOption, selected ? local.servicePickerOptionSelected : null]}
+                    onPress={() => {
+                      setServiceId(Number(service.id));
+                      setServicePickerOpen(false);
+                    }}>
+                    <View style={local.servicePickerCopy}>
+                      <Text style={[local.servicePickerOptionTitle, selected ? local.servicePickerOptionTitleSelected : null]}>
+                        {service.name}
+                      </Text>
+                      {service.detail ? <Text style={local.servicePickerDetail}>{service.detail}</Text> : null}
+                    </View>
+                    <Text style={[local.servicePickerOptionAction, selected ? local.servicePickerOptionActionSelected : null]}>
+                      {selected ? 'Selected' : 'Select'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+        </View>
+        <View style={local.servicePicker}>
+          <Text style={local.servicePickerLabel}>Pickup Date</Text>
+          <Pressable
+            style={local.servicePickerButton}
+            onPress={() => setDatePickerOpen((open) => !open)}
+            accessibilityRole="button"
+            accessibilityLabel="Select pickup date">
+            <View style={local.servicePickerCopy}>
+              <Text style={local.servicePickerTitle}>{selectedDate?.name ?? 'Select pickup date'}</Text>
+              {selectedDate?.detail ? <Text style={local.servicePickerDetail}>{selectedDate.detail}</Text> : null}
+            </View>
+            <Text style={local.servicePickerArrow}>{datePickerOpen ? '▲' : '▼'}</Text>
+          </Pressable>
+          {datePickerOpen ? (
+            <View style={local.servicePickerOptions}>
+              {dateOptions.map((date) => {
+                const selected = String(date.id) === pickupDate;
+                return (
+                  <Pressable
+                    key={String(date.id)}
+                    style={[local.servicePickerOption, selected ? local.servicePickerOptionSelected : null]}
+                    onPress={() => {
+                      setPickupDate(String(date.id));
+                      setDatePickerOpen(false);
+                    }}>
+                    <View style={local.servicePickerCopy}>
+                      <Text style={[local.servicePickerOptionTitle, selected ? local.servicePickerOptionTitleSelected : null]}>
+                        {date.name}
+                      </Text>
+                      <Text style={local.servicePickerDetail}>{date.detail}</Text>
+                    </View>
+                    <Text style={[local.servicePickerOptionAction, selected ? local.servicePickerOptionActionSelected : null]}>
+                      {selected ? 'Selected' : 'Select'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+        </View>
+        <View style={local.servicePicker}>
+          <Text style={local.servicePickerLabel}>Pickup Time</Text>
+          <Pressable
+            style={local.servicePickerButton}
+            onPress={() => setTimePickerOpen((open) => !open)}
+            accessibilityRole="button"
+            accessibilityLabel="Select pickup time">
+            <View style={local.servicePickerCopy}>
+              <Text style={local.servicePickerTitle}>{selectedTime?.name ?? 'No slots left today'}</Text>
+              <Text style={local.servicePickerDetail}>{selectedTime ? 'Available pickup slot' : 'Pick a later date'}</Text>
+            </View>
+            <Text style={local.servicePickerArrow}>{timePickerOpen ? '▲' : '▼'}</Text>
+          </Pressable>
+          {timePickerOpen ? (
+            <View style={local.servicePickerOptions}>
+              {availableTimeSlots.length === 0 ? (
+                <Text style={local.servicePickerEmpty}>No slots left today. Pick a later date.</Text>
+              ) : null}
+              {availableTimeSlots.map((slot) => {
+                const selected = String(slot.id) === pickupTime;
+                return (
+                  <Pressable
+                    key={String(slot.id)}
+                    style={[local.servicePickerOption, selected ? local.servicePickerOptionSelected : null]}
+                    onPress={() => {
+                      setPickupTime(String(slot.id));
+                      setTimePickerOpen(false);
+                    }}>
+                    <Text style={[local.servicePickerOptionTitle, selected ? local.servicePickerOptionTitleSelected : null]}>
+                      {slot.name}
+                    </Text>
+                    <Text style={[local.servicePickerOptionAction, selected ? local.servicePickerOptionActionSelected : null]}>
+                      {selected ? 'Selected' : 'Select'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+        </View>
+        <Field label="Notes" value={notes} onChangeText={setNotes} placeholder="Optional instructions" />
         <Message text={message} />
         <Message text={success} tone="success" />
         <Button title="Submit Pickup" loading={loading} onPress={handleSubmit} />
@@ -277,23 +383,105 @@ const local = {
     borderColor: 'rgba(52, 122, 0, 0.22)',
     borderRadius: 8,
     borderWidth: 1,
-    gap: 4,
-    padding: 14,
+    gap: 2,
+    padding: 10,
   },
   lockedStoreLabel: {
     color: brand.gray,
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '800' as const,
     textTransform: 'uppercase' as const,
   },
   lockedStoreName: {
     color: brand.green,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '800' as const,
   },
   lockedStoreHint: {
     color: brand.gray,
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  servicePicker: {
+    gap: 5,
+  },
+  servicePickerLabel: {
+    color: brand.black,
     fontSize: 12,
-    lineHeight: 16,
+    fontWeight: '800' as const,
+  },
+  servicePickerButton: {
+    alignItems: 'center' as const,
+    backgroundColor: '#FBFDF9',
+    borderColor: 'rgba(52, 122, 0, 0.18)',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row' as const,
+    gap: 12,
+    justifyContent: 'space-between' as const,
+    minHeight: 46,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  servicePickerCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  servicePickerTitle: {
+    color: brand.green,
+    fontSize: 14,
+    fontWeight: '900' as const,
+  },
+  servicePickerDetail: {
+    color: brand.gray,
+    fontSize: 11,
+    fontWeight: '700' as const,
+  },
+  servicePickerArrow: {
+    color: brand.green,
+    fontSize: 12,
+    fontWeight: '900' as const,
+  },
+  servicePickerOptions: {
+    borderColor: 'rgba(52, 122, 0, 0.14)',
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden' as const,
+  },
+  servicePickerEmpty: {
+    color: brand.gray,
+    fontSize: 13,
+    fontWeight: '700' as const,
+    padding: 10,
+    textAlign: 'center' as const,
+  },
+  servicePickerOption: {
+    alignItems: 'center' as const,
+    backgroundColor: brand.white,
+    borderBottomColor: 'rgba(52, 122, 0, 0.10)',
+    borderBottomWidth: 1,
+    flexDirection: 'row' as const,
+    gap: 10,
+    justifyContent: 'space-between' as const,
+    padding: 10,
+  },
+  servicePickerOptionSelected: {
+    backgroundColor: '#F0F7EB',
+  },
+  servicePickerOptionTitle: {
+    color: brand.black,
+    fontSize: 14,
+    fontWeight: '800' as const,
+  },
+  servicePickerOptionTitleSelected: {
+    color: brand.green,
+  },
+  servicePickerOptionAction: {
+    color: brand.gray,
+    fontSize: 12,
+    fontWeight: '800' as const,
+  },
+  servicePickerOptionActionSelected: {
+    color: brand.green,
   },
 };

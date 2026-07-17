@@ -22,6 +22,15 @@ function cleanMobile(value: string) {
   return value.replace(/\D/g, '').slice(0, 10);
 }
 
+function maskedMobile(value: string) {
+  const cleaned = cleanMobile(value);
+  if (cleaned.length < 4) {
+    return '******';
+  }
+
+  return `${cleaned.slice(0, 2)}******${cleaned.slice(-2)}`;
+}
+
 function fullName(customer: CustomerSummary) {
   return `${customer.first_name ?? ''} ${customer.last_name ?? ''}`.trim() || 'Cleanodry Customer';
 }
@@ -295,7 +304,7 @@ export function LoginCard({ onLoggedIn }: { onLoggedIn?: () => void }) {
                 ? 'Create Account'
                 : 'Select Store'}
         </Text>
-        {step !== 'mobile' ? <Text style={local.mobileHint}>+91 {mobile}</Text> : null}
+        {step !== 'mobile' ? <Text style={local.mobileHint}>+91 {maskedMobile(mobile)}</Text> : null}
       </View>
       {step === 'mobile' ? (
         <>

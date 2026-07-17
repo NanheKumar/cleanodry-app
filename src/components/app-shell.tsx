@@ -618,6 +618,7 @@ export function AppShell({
   }
 
   const name = auth.user ? `${auth.user.firstName} ${auth.user.lastName}`.trim() || 'Customer' : 'Customer';
+  const contentMinHeight = Math.max(0, height - 42);
 
   function handleSectionSelect(section: AppSection) {
     if (onSectionChange) {
@@ -628,7 +629,7 @@ export function AppShell({
   }
 
   return (
-    <Screen contentContainerStyle={[styles.screen, { minHeight: height }]}>
+    <Screen contentContainerStyle={[styles.screen, { minHeight: contentMinHeight }]}>
       <AppHeader
         notificationCount={notificationCount}
         notificationsOpen={notificationsOpen}
@@ -674,7 +675,6 @@ const styles = {
     gap: 16,
     maxWidth: 520,
     paddingHorizontal: 16,
-    paddingTop: 14,
     paddingBottom: 28,
     width: '100%' as const,
   },
@@ -944,55 +944,55 @@ const styles = {
     alignItems: 'center' as const,
     borderTopColor: 'rgba(52, 122, 0, 0.14)',
     borderTopWidth: 1,
-    gap: 12,
-    marginTop: 8,
-    paddingTop: 16,
+    gap: 6,
+    marginTop: 2,
+    paddingTop: 8,
   },
   footerActions: {
     flexDirection: 'row' as const,
-    gap: 10,
+    gap: 8,
     width: '100%' as const,
   },
   footerAction: {
     alignItems: 'center' as const,
     backgroundColor: brand.white,
     borderColor: 'rgba(52, 122, 0, 0.14)',
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     flex: 1,
     flexDirection: 'row' as const,
-    gap: 8,
+    gap: 6,
     justifyContent: 'center' as const,
-    minHeight: 48,
-    paddingHorizontal: 10,
+    minHeight: 38,
+    paddingHorizontal: 8,
   },
   footerActionIcon: {
     alignItems: 'center' as const,
     backgroundColor: '#EEF6EA',
-    borderRadius: 12,
-    height: 32,
+    borderRadius: 10,
+    height: 26,
     justifyContent: 'center' as const,
-    width: 32,
+    width: 26,
   },
   footerActionText: {
     color: brand.green,
     flexShrink: 1,
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '900' as const,
     textAlign: 'center' as const,
   },
   footerCopyright: {
     color: '#667061',
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: '700' as const,
-    lineHeight: 16,
+    lineHeight: 12,
     textAlign: 'center' as const,
   },
   footerVersion: {
     color: '#7C8876',
-    fontSize: 10,
+    fontSize: 8,
     fontWeight: '800' as const,
-    lineHeight: 14,
+    lineHeight: 10,
     textAlign: 'center' as const,
   },
   emptyState: {

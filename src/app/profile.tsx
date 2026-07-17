@@ -1,9 +1,9 @@
 import { router } from 'expo-router';
 import { use, useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, Text, type TextStyle, View } from 'react-native';
+import { Alert, Linking, Platform, Pressable, Text, type TextStyle, View } from 'react-native';
 
 import { AppCard, AppShell } from '@/components/app-shell';
-import { Button, Field, Message, SelectBox, brand } from '@/components/cleanodry-ui';
+import { Button, Field, Message, brand } from '@/components/cleanodry-ui';
 import { ApiError, deleteCustomerAccount, getCustomerDetails, updateCustomer } from '@/lib/api';
 import { AuthContext } from '@/lib/auth-context';
 import { formatInr } from '@/lib/format';
@@ -11,6 +11,11 @@ import { clearLocalFcmRegistrationState } from '@/lib/push-notifications';
 
 const tabularNums: TextStyle['fontVariant'] = ['tabular-nums'];
 const ACCOUNT_DELETION_POLICY_URL = 'https://www.cleanodry.com/account-deletion';
+const genderOptions = [
+  { id: 'male', name: 'Male' },
+  { id: 'female', name: 'Female' },
+  { id: 'other', name: 'Other' },
+];
 
 function textValue(value: unknown, fallback = 'Not added') {
   const text = String(value ?? '').trim();
@@ -39,6 +44,7 @@ export default function ProfileScreen() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [genderPickerOpen, setGenderPickerOpen] = useState(false);
   const [form, setForm] = useState({
     firstName: '',
     lastName: '',
@@ -92,6 +98,7 @@ export default function ProfileScreen() {
   const mobile = textValue(customer?.mobile ?? auth.user?.mobile);
   const storeName = textValue(store?.name ?? auth.user?.store?.name);
   const walletBalance = formatInr(wallet?.balance ?? 0);
+  const selectedGender = genderOptions.find((option) => option.id === form.gender);
   const initials = fullName
     .split(' ')
     .filter(Boolean)
@@ -232,6 +239,23 @@ export default function ProfileScreen() {
       return;
     }
 
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const firstConfirmed = window.confirm(
+        'Delete your account?\n\nThis action is permanent. You will lose access to your Cleanodry profile, saved addresses, notifications, and customer app data. Some order or invoice records may be retained where legally required.',
+      );
+      if (!firstConfirmed) {
+        return;
+      }
+
+      const secondConfirmed = window.confirm(
+        'Confirm account deletion\n\nAre you sure you want to permanently delete your Cleanodry account?',
+      );
+      if (secondConfirmed) {
+        void performAccountDeletion();
+      }
+      return;
+    }
+
     Alert.alert(
       'Delete your account?',
       'This action is permanent. You will lose access to your Cleanodry profile, saved addresses, notifications, and customer app data. Some order or invoice records may be retained where legally required.',
@@ -316,17 +340,42 @@ export default function ProfileScreen() {
               placeholder="rahul@example.com"
               autoCapitalize="none"
             />
-            <SelectBox
-              label="Gender"
-              value={form.gender}
-              placeholder="Select gender"
-              options={[
-                { id: 'male', name: 'Male' },
-                { id: 'female', name: 'Female' },
-                { id: 'other', name: 'Other' },
-              ]}
-              onChange={(id) => setForm((current) => ({ ...current, gender: String(id) }))}
-            />
+            <View style={styles.genderPicker}>
+              <Text style={styles.genderPickerLabel}>Gender</Text>
+              <Pressable
+                style={styles.genderPickerButton}
+                onPress={() => setGenderPickerOpen((open) => !open)}
+                accessibilityRole="button"
+                accessibilityLabel="Select gender">
+                <Text style={[styles.genderPickerTitle, !selectedGender ? styles.genderPickerPlaceholder : null]}>
+                  {selectedGender?.name ?? 'Select gender'}
+                </Text>
+                <Text style={styles.genderPickerArrow}>{genderPickerOpen ? '▲' : '▼'}</Text>
+              </Pressable>
+              {genderPickerOpen ? (
+                <View style={styles.genderPickerOptions}>
+                  {genderOptions.map((option) => {
+                    const selected = option.id === form.gender;
+                    return (
+                      <Pressable
+                        key={option.id}
+                        style={[styles.genderPickerOption, selected ? styles.genderPickerOptionSelected : null]}
+                        onPress={() => {
+                          setForm((current) => ({ ...current, gender: option.id }));
+                          setGenderPickerOpen(false);
+                        }}>
+                        <Text style={[styles.genderPickerOptionText, selected ? styles.genderPickerOptionTextSelected : null]}>
+                          {option.name}
+                        </Text>
+                        <Text style={[styles.genderPickerAction, selected ? styles.genderPickerActionSelected : null]}>
+                          {selected ? 'Selected' : 'Select'}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
             <Field
               label="Address"
               value={form.address}
@@ -443,6 +492,74 @@ const styles = {
   },
   formGrid: {
     gap: 13,
+  },
+  genderPicker: {
+    gap: 8,
+  },
+  genderPickerLabel: {
+    color: '#1F2A1B',
+    fontSize: 14,
+    fontWeight: '800' as const,
+  },
+  genderPickerButton: {
+    alignItems: 'center' as const,
+    backgroundColor: '#FAFCF8',
+    borderColor: 'rgba(52, 122, 0, 0.18)',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    minHeight: 52,
+    paddingHorizontal: 14,
+  },
+  genderPickerTitle: {
+    color: brand.black,
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '800' as const,
+  },
+  genderPickerPlaceholder: {
+    color: '#9C9C9C',
+    fontWeight: '600' as const,
+  },
+  genderPickerArrow: {
+    color: brand.green,
+    fontSize: 12,
+    fontWeight: '900' as const,
+  },
+  genderPickerOptions: {
+    borderColor: 'rgba(52, 122, 0, 0.14)',
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden' as const,
+  },
+  genderPickerOption: {
+    alignItems: 'center' as const,
+    backgroundColor: brand.white,
+    borderBottomColor: 'rgba(52, 122, 0, 0.10)',
+    borderBottomWidth: 1,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    padding: 13,
+  },
+  genderPickerOptionSelected: {
+    backgroundColor: '#F0F7EB',
+  },
+  genderPickerOptionText: {
+    color: brand.black,
+    fontSize: 14,
+    fontWeight: '800' as const,
+  },
+  genderPickerOptionTextSelected: {
+    color: brand.green,
+  },
+  genderPickerAction: {
+    color: brand.gray,
+    fontSize: 12,
+    fontWeight: '800' as const,
+  },
+  genderPickerActionSelected: {
+    color: brand.green,
   },
   name: {
     color: '#111B0D',

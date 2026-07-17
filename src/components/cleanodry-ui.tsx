@@ -11,6 +11,7 @@ import {
   type TextInputProps,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const brand = {
   green: '#347A00',
@@ -27,13 +28,22 @@ export const Screen = forwardRef<ScrollView, PropsWithChildren<ScrollViewProps>>
   { children, contentContainerStyle, ...props },
   ref,
 ) {
+  const insets = useSafeAreaInsets();
+
   return (
     <ScrollView
       ref={ref}
       style={styles.screen}
       contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps="handled"
-      contentContainerStyle={[styles.screenContent, contentContainerStyle]}
+      contentContainerStyle={[
+        styles.screenContent,
+        {
+          paddingTop: Math.max(18, insets.top + 10),
+          paddingBottom: Math.max(40, insets.bottom + 28),
+        },
+        contentContainerStyle,
+      ]}
       {...props}>
       {children}
     </ScrollView>
