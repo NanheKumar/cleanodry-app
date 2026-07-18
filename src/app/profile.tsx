@@ -28,6 +28,11 @@ const genderOptions = [
   { id: 'other', name: 'Other' },
 ];
 
+function canShowPushStatusForCustomer(customer: Record<string, unknown> | null) {
+  const flag = customer?.show_push_debug;
+  return flag === true || flag === 1 || flag === '1' || flag === 'true';
+}
+
 function textValue(value: unknown, fallback = 'Not added') {
   const text = String(value ?? '').trim();
   return text || fallback;
@@ -172,7 +177,7 @@ export default function ProfileScreen() {
   }, [fillForm, signOut, user]);
 
   useEffect(() => {
-    if (!SHOW_PUSH_NOTIFICATION_STATUS || !auth.user) {
+    if (!SHOW_PUSH_NOTIFICATION_STATUS || !auth.user || !canShowPushStatusForCustomer(customer)) {
       return;
     }
 
@@ -195,7 +200,7 @@ export default function ProfileScreen() {
       mounted = false;
       unsubscribe();
     };
-  }, [auth.user]);
+  }, [auth.user, customer]);
 
   const store = customer?.store as Record<string, unknown> | null | undefined;
   const wallet = customer?.wallet as Record<string, unknown> | null | undefined;
@@ -208,6 +213,7 @@ export default function ProfileScreen() {
   const gstNo = String(customer?.gst_no ?? '').trim();
   const fullName = textValue(`${firstName} ${lastName}`.trim(), 'Cleanodry Customer');
   const mobile = textValue(customer?.mobile ?? auth.user?.mobile);
+  const shouldShowPushNotificationStatus = SHOW_PUSH_NOTIFICATION_STATUS && canShowPushStatusForCustomer(customer);
   const storeName = textValue(store?.name ?? auth.user?.store?.name);
   const walletBalance = formatInr(wallet?.balance ?? 0);
   const selectedGender = genderOptions.find((option) => option.id === form.gender);
@@ -561,7 +567,7 @@ export default function ProfileScreen() {
           </>
         )}
       </AppCard>
-      {SHOW_PUSH_NOTIFICATION_STATUS && auth.user ? (
+      {shouldShowPushNotificationStatus && auth.user ? (
         <PushNotificationStatusSection
           loading={pushRetrying}
           status={pushStatus}
