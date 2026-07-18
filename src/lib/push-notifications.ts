@@ -39,6 +39,22 @@ type FcmDiagnostics = {
   safeMessage?: string;
 };
 
+export type SafePushRegistrationStatus = {
+  notificationPermission: 'allowed' | 'denied' | 'unknown';
+  physicalDevice: 'yes' | 'no';
+  fcmTokenGenerated: 'yes' | 'no';
+  tokenType: string;
+  backendRegistrationAttempted: 'yes' | 'no';
+  backendRegistrationCacheSkipped: 'yes' | 'no';
+  backendResponseStatus: string;
+  registrationResult: 'success' | 'failure' | 'unknown';
+  lastSafeErrorMessage: string;
+  lastRegistrationTime: string;
+};
+
+let latestPushRegistrationStatus: SafePushRegistrationStatus | null = null;
+const pushRegistrationStatusListeners = new Set<(status: SafePushRegistrationStatus) => void>();
+
 export class FcmRegistrationError extends Error {
   constructor(
     public code: FcmRegistrationErrorCode,
@@ -59,7 +75,13 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export async function registerForPushNotifications(customerToken: string, customerId?: number, storeId?: number) {
+export async function registerForPushNotifications(
+  customerToken: string,
+  customerId?: number,
+  storeId?: number,
+  onStatus?: (status: SafePushRegistrationStatus) => void,
+  forceRegistration = false,
+) {
   const diagnostics = createDiagnostics(customerId, storeId);
 
   try {
@@ -96,18 +118,15 @@ export async function registerForPushNotifications(customerToken: string, custom
     diagnostics.tokenType = token.type;
     diagnostics.maskedToken = maskToken(token.data);
 
-    if (token.type !== 'fcm') {
-      throw new FcmRegistrationError('token_not_fcm', `Native push token type was ${token.type}.`);
-    }
-
     if (!token.data) {
       throw new FcmRegistrationError('empty_token', 'Native FCM token was empty.');
     }
 
-    await registerFcmToken(customerToken, token.data, customerId, storeId, diagnostics);
+    await registerFcmToken(customerToken, token.data, customerId, storeId, diagnostics, forceRegistration);
 
     diagnostics.result = 'success';
     logFcmDiagnostics(diagnostics);
+    onStatus?.(publishPushRegistrationStatus(diagnostics));
 
     return {
       token: token.data,
@@ -120,8 +139,43 @@ export async function registerForPushNotifications(customerToken: string, custom
     diagnostics.responseStatus = String(registrationError.status ?? diagnostics.responseStatus);
     diagnostics.safeMessage = registrationError.message;
     logFcmDiagnostics(diagnostics);
+    onStatus?.(publishPushRegistrationStatus(diagnostics));
     throw registrationError;
   }
+}
+
+export async function getInitialPushRegistrationStatus(): Promise<SafePushRegistrationStatus> {
+  if (latestPushRegistrationStatus) {
+    return latestPushRegistrationStatus;
+  }
+
+  const diagnostics = createDiagnostics();
+
+  try {
+    const permission = await Notifications.getPermissionsAsync();
+    diagnostics.permission = permission.status;
+  } catch {
+    diagnostics.permission = 'unknown';
+  }
+
+  diagnostics.result = 'failure';
+  return {
+    ...safeStatusFromDiagnostics(diagnostics),
+    registrationResult: 'unknown',
+    lastSafeErrorMessage: '',
+    lastRegistrationTime: 'Never',
+  };
+}
+
+export function subscribeToPushRegistrationStatus(listener: (status: SafePushRegistrationStatus) => void) {
+  pushRegistrationStatusListeners.add(listener);
+  if (latestPushRegistrationStatus) {
+    listener(latestPushRegistrationStatus);
+  }
+
+  return () => {
+    pushRegistrationStatusListeners.delete(listener);
+  };
 }
 
 export function addPushTokenRefreshListener(
@@ -135,7 +189,7 @@ export function addPushTokenRefreshListener(
   }
 
   const subscription = Notifications.addPushTokenListener((token) => {
-    if (token.type === 'fcm' && token.data) {
+    if (token.data) {
       const diagnostics = {
         ...createDiagnostics(customerId, storeId),
         permission: 'refresh_listener',
@@ -144,10 +198,11 @@ export function addPushTokenRefreshListener(
         maskedToken: maskToken(token.data),
       };
 
-      void registerFcmToken(customerToken, token.data, customerId, storeId, diagnostics)
+      void registerFcmToken(customerToken, token.data, customerId, storeId, diagnostics, true)
         .then(() => {
           diagnostics.result = 'success';
           logFcmDiagnostics(diagnostics);
+          publishPushRegistrationStatus(diagnostics);
         })
         .catch((error) => {
           const registrationError = normalizeFcmRegistrationError(error);
@@ -157,6 +212,7 @@ export function addPushTokenRefreshListener(
           diagnostics.responseStatus = String(registrationError.status ?? diagnostics.responseStatus);
           diagnostics.safeMessage = registrationError.message;
           logFcmDiagnostics(diagnostics);
+          publishPushRegistrationStatus(diagnostics);
         });
     }
   });
@@ -197,10 +253,11 @@ async function registerFcmToken(
   customerId?: number,
   storeId?: number,
   diagnostics?: FcmDiagnostics,
+  forceRegistration = false,
 ) {
   const registrationKey = buildRegistrationKey(fcmToken, customerId, storeId);
   const lastRegistrationKey = await SecureStore.getItemAsync(REGISTERED_TOKEN_STORAGE_KEY).catch(() => null);
-  if (lastRegistrationKey === registrationKey) {
+  if (!forceRegistration && lastRegistrationKey === registrationKey) {
     if (diagnostics) {
       diagnostics.cacheSkipped = true;
     }
@@ -241,6 +298,51 @@ function createDiagnostics(customerId?: number, storeId?: number): FcmDiagnostic
     cacheSkipped: false,
     result: 'failure',
   };
+}
+
+function safeStatusFromDiagnostics(diagnostics: FcmDiagnostics): SafePushRegistrationStatus {
+  return {
+    notificationPermission: safePermission(diagnostics.permission),
+    physicalDevice: diagnostics.physicalDevice ? 'yes' : 'no',
+    fcmTokenGenerated: diagnostics.tokenGenerated ? 'yes' : 'no',
+    tokenType: safeTokenType(diagnostics.tokenType),
+    backendRegistrationAttempted: diagnostics.requestStarted ? 'yes' : 'no',
+    backendRegistrationCacheSkipped: diagnostics.cacheSkipped ? 'yes' : 'no',
+    backendResponseStatus: diagnostics.responseStatus,
+    registrationResult: diagnostics.result,
+    lastSafeErrorMessage: diagnostics.safeMessage ?? '',
+    lastRegistrationTime: new Date().toISOString(),
+  };
+}
+
+function publishPushRegistrationStatus(diagnostics: FcmDiagnostics) {
+  const status = safeStatusFromDiagnostics(diagnostics);
+  latestPushRegistrationStatus = status;
+  pushRegistrationStatusListeners.forEach((listener) => {
+    listener(status);
+  });
+  return status;
+}
+
+function safePermission(permission: string): SafePushRegistrationStatus['notificationPermission'] {
+  if (permission === 'granted') {
+    return 'allowed';
+  }
+
+  if (permission === 'denied') {
+    return 'denied';
+  }
+
+  return 'unknown';
+}
+
+function safeTokenType(tokenType: string): SafePushRegistrationStatus['tokenType'] {
+  const safeType = tokenType.trim();
+  if (!safeType) {
+    return 'unknown';
+  }
+
+  return safeType;
 }
 
 function buildRegistrationKey(fcmToken: string, customerId?: number, storeId?: number) {
@@ -308,10 +410,6 @@ function safeApiMessage(error: ApiError) {
 }
 
 export function logFcmRegistrationFailure(error: unknown, source: string) {
-  if (!__DEV__) {
-    return;
-  }
-
   const registrationError = normalizeFcmRegistrationError(error);
   console.warn('[Cleanodry FCM] registration failure', {
     source,
@@ -322,18 +420,11 @@ export function logFcmRegistrationFailure(error: unknown, source: string) {
 }
 
 function logFcmDiagnostics(diagnostics: FcmDiagnostics) {
-  if (!__DEV__) {
-    return;
-  }
-
   console.info('[Cleanodry FCM] registration result', {
     permission: diagnostics.permission,
     physicalDevice: diagnostics.physicalDevice,
     tokenGenerated: diagnostics.tokenGenerated,
     tokenType: diagnostics.tokenType,
-    maskedToken: diagnostics.maskedToken,
-    customerId: diagnostics.customerId,
-    storeId: diagnostics.storeId,
     apiBaseUrl: diagnostics.apiBaseUrl,
     finalEndpoint: diagnostics.finalEndpoint,
     requestStarted: diagnostics.requestStarted,

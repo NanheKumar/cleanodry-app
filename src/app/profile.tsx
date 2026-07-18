@@ -7,10 +7,21 @@ import { Button, Field, Message, brand } from '@/components/cleanodry-ui';
 import { ApiError, deleteCustomerAccount, getCustomerDetails, updateCustomer } from '@/lib/api';
 import { AuthContext } from '@/lib/auth-context';
 import { formatInr } from '@/lib/format';
-import { clearLocalFcmRegistrationState } from '@/lib/push-notifications';
+import {
+  clearLocalFcmRegistrationState,
+  getInitialPushRegistrationStatus,
+  registerForPushNotifications,
+  subscribeToPushRegistrationStatus,
+  type SafePushRegistrationStatus,
+} from '@/lib/push-notifications';
 
 const tabularNums: TextStyle['fontVariant'] = ['tabular-nums'];
 const ACCOUNT_DELETION_POLICY_URL = 'https://www.cleanodry.com/account-deletion';
+const SHOW_PUSH_NOTIFICATION_STATUS =
+  __DEV__ ||
+  process.env.EXPO_PUBLIC_SHOW_PUSH_STATUS === 'true' ||
+  process.env.EAS_BUILD_PROFILE === 'preview' ||
+  process.env.EXPO_PUBLIC_EAS_BUILD_PROFILE === 'preview';
 const genderOptions = [
   { id: 'male', name: 'Male' },
   { id: 'female', name: 'Female' },
@@ -33,6 +44,79 @@ function DetailItem({ label, value }: { label: string; value: string }) {
   );
 }
 
+function createEmptyPushStatus(): SafePushRegistrationStatus {
+  return {
+    notificationPermission: 'unknown',
+    physicalDevice: 'no',
+    fcmTokenGenerated: 'no',
+    tokenType: 'unknown',
+    backendRegistrationAttempted: 'no',
+    backendRegistrationCacheSkipped: 'no',
+    backendResponseStatus: 'not_requested',
+    registrationResult: 'unknown',
+    lastSafeErrorMessage: '',
+    lastRegistrationTime: 'Never',
+  };
+}
+
+function formatPushStatusTime(value: string) {
+  if (!value || value === 'Never') {
+    return 'Never';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
+}
+
+function PushStatusRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.pushStatusRow}>
+      <Text style={styles.pushStatusLabel}>{label}</Text>
+      <Text selectable style={styles.pushStatusValue}>
+        {value || 'None'}
+      </Text>
+    </View>
+  );
+}
+
+function PushNotificationStatusSection({
+  loading,
+  status,
+  onRetry,
+}: {
+  loading: boolean;
+  status: SafePushRegistrationStatus;
+  onRetry: () => void;
+}) {
+  return (
+    <AppCard>
+      <View style={styles.pushStatusSection}>
+        <View style={styles.pushStatusHead}>
+          <Text style={styles.pushStatusTitle}>Push Notification Status</Text>
+          <Text style={styles.pushStatusBadge}>Dev</Text>
+        </View>
+        <View style={styles.pushStatusGrid}>
+          <PushStatusRow label="Notification permission" value={status.notificationPermission} />
+          <PushStatusRow label="Physical device" value={status.physicalDevice} />
+          <PushStatusRow label="FCM token generated" value={status.fcmTokenGenerated} />
+          <PushStatusRow label="Token type" value={status.tokenType} />
+          <PushStatusRow label="Backend registration attempted" value={status.backendRegistrationAttempted} />
+          <PushStatusRow label="Backend registration cache skipped" value={status.backendRegistrationCacheSkipped} />
+          <PushStatusRow label="Backend response status" value={status.backendResponseStatus} />
+          <PushStatusRow label="Registration result" value={status.registrationResult} />
+          <PushStatusRow label="Last safe error message" value={status.lastSafeErrorMessage || 'None'} />
+          <PushStatusRow label="Last registration time" value={formatPushStatusTime(status.lastRegistrationTime)} />
+        </View>
+        <Button title="Retry Push Registration" variant="outline" loading={loading} onPress={onRetry} />
+      </View>
+    </AppCard>
+  );
+}
+
 export default function ProfileScreen() {
   const auth = use(AuthContext);
   const user = auth.user;
@@ -45,6 +129,8 @@ export default function ProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [genderPickerOpen, setGenderPickerOpen] = useState(false);
+  const [pushStatus, setPushStatus] = useState<SafePushRegistrationStatus>(() => createEmptyPushStatus());
+  const [pushRetrying, setPushRetrying] = useState(false);
   const [form, setForm] = useState({
     firstName: '',
     lastName: '',
@@ -84,6 +170,32 @@ export default function ProfileScreen() {
         setMessage(error instanceof Error ? error.message : 'Could not load profile.');
       });
   }, [fillForm, signOut, user]);
+
+  useEffect(() => {
+    if (!SHOW_PUSH_NOTIFICATION_STATUS || !auth.user) {
+      return;
+    }
+
+    let mounted = true;
+    const unsubscribe = subscribeToPushRegistrationStatus((status) => {
+      if (mounted) {
+        setPushStatus(status);
+      }
+    });
+
+    getInitialPushRegistrationStatus()
+      .then((status) => {
+        if (mounted) {
+          setPushStatus(status);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [auth.user]);
 
   const store = customer?.store as Record<string, unknown> | null | undefined;
   const wallet = customer?.wallet as Record<string, unknown> | null | undefined;
@@ -231,6 +343,27 @@ export default function ProfileScreen() {
     } finally {
       deletionInFlight.current = false;
       setDeletingAccount(false);
+    }
+  }
+
+  async function retryPushRegistration() {
+    if (!auth.user?.token || pushRetrying) {
+      return;
+    }
+
+    setPushRetrying(true);
+    try {
+      await registerForPushNotifications(
+        auth.user.token,
+        auth.user.customerId,
+        auth.user.store?.id,
+        setPushStatus,
+        true,
+      );
+    } catch {
+      // The safe failure status is supplied by registerForPushNotifications.
+    } finally {
+      setPushRetrying(false);
     }
   }
 
@@ -428,6 +561,15 @@ export default function ProfileScreen() {
           </>
         )}
       </AppCard>
+      {SHOW_PUSH_NOTIFICATION_STATUS && auth.user ? (
+        <PushNotificationStatusSection
+          loading={pushRetrying}
+          status={pushStatus}
+          onRetry={() => {
+            void retryPushRegistration();
+          }}
+        />
+      ) : null}
       {auth.user ? (
         <AppCard>
           <View style={styles.dangerSection}>
@@ -629,6 +771,59 @@ const styles = {
     textTransform: 'uppercase' as const,
   },
   detailValue: {
+    color: '#26311F',
+    fontSize: 14,
+    fontWeight: '800' as const,
+    lineHeight: 20,
+  },
+  pushStatusSection: {
+    gap: 14,
+  },
+  pushStatusHead: {
+    alignItems: 'center' as const,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+  },
+  pushStatusTitle: {
+    color: '#111B0D',
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '900' as const,
+  },
+  pushStatusBadge: {
+    backgroundColor: '#EAF5E4',
+    borderColor: 'rgba(52, 122, 0, 0.18)',
+    borderRadius: 999,
+    borderWidth: 1,
+    color: brand.greenDark,
+    fontSize: 11,
+    fontWeight: '900' as const,
+    overflow: 'hidden' as const,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    textTransform: 'uppercase' as const,
+  },
+  pushStatusGrid: {
+    borderColor: 'rgba(52, 122, 0, 0.10)',
+    borderRadius: 18,
+    borderWidth: 1,
+    overflow: 'hidden' as const,
+  },
+  pushStatusRow: {
+    backgroundColor: brand.white,
+    borderBottomColor: 'rgba(52, 122, 0, 0.10)',
+    borderBottomWidth: 1,
+    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  pushStatusLabel: {
+    color: '#74806F',
+    fontSize: 11,
+    fontWeight: '900' as const,
+    textTransform: 'uppercase' as const,
+  },
+  pushStatusValue: {
     color: '#26311F',
     fontSize: 14,
     fontWeight: '800' as const,

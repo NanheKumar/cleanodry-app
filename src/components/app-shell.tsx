@@ -588,7 +588,13 @@ export function AppShell({
       return;
     }
 
-    void registerForPushNotifications(auth.user.token, auth.user.customerId, auth.user.store?.id).catch((error) => {
+    void registerForPushNotifications(
+      auth.user.token,
+      auth.user.customerId,
+      auth.user.store?.id,
+      undefined,
+      true,
+    ).catch((error) => {
       logFcmRegistrationFailure(error, 'authenticated_session');
     });
   }, [auth.user?.customerId, auth.user?.store?.id, auth.user?.token]);

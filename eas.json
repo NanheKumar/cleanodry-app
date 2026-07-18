@@ -10,12 +10,18 @@
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SHOW_PUSH_STATUS": "true"
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
       "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_SHOW_PUSH_STATUS": "false"
+      },
       "android": {
         "buildType": "app-bundle"
       }
