@@ -7,9 +7,11 @@ import { AppCard, AppShell, type AppSection, MenuGlyph, isAppSection } from '@/c
 import { Button, Message, brand } from '@/components/cleanodry-ui';
 import {
   ApiError,
+  getCustomerHome,
   getCustomerPackageLabels,
   getStorePackages,
   getWebsiteStores,
+  type HomeBanner,
   type CustomerPackageLabelsPayload,
   type StorePackage,
   type WebsiteStore,
@@ -48,6 +50,14 @@ const serviceCards = [
 const supportPhoneNumber = '+917428380598';
 const supportWhatsappNumber = '+918448780540';
 const whatsappUrl = 'https://wa.me/918448780540';
+const fallbackHomeBanner: Required<Pick<HomeBanner, 'enabled' | 'eyebrow' | 'title' | 'subtitle'>> &
+  Pick<HomeBanner, 'image_url'> = {
+  enabled: true,
+  eyebrow: 'Premium care',
+  title: 'Hi {first_name}, ready for fresh clothes?',
+  subtitle: 'Schedule doorstep pickup, track requests, and manage your Cleanodry account from here.',
+  image_url: null,
+};
 
 async function openSupportLink(url: string) {
   const canOpen = await Linking.canOpenURL(url).catch(() => false);
@@ -58,6 +68,18 @@ async function openSupportLink(url: string) {
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function cleanBannerText(value: string | null | undefined) {
+  return String(value ?? '').trim();
+}
+
+function bannerEnabled(value: HomeBanner | null | undefined) {
+  return value?.enabled === true || value?.enabled === 1;
+}
+
+function replaceBannerPlaceholders(value: string, firstName: string) {
+  return value.replace(/\{first_name\}/g, firstName);
 }
 
 function SupportActionIcon({ type }: { type: 'call' | 'whatsapp' }) {
@@ -72,17 +94,62 @@ function SupportActionIcon({ type }: { type: 'call' | 'whatsapp' }) {
   );
 }
 
-function HomeContent({ userName, mobile, storeName }: { userName: string; mobile: string; storeName?: string }) {
+function HomeContent({
+  token,
+  userName,
+  mobile,
+  storeName,
+}: {
+  token: string;
+  userName: string;
+  mobile: string;
+  storeName?: string;
+}) {
+  const [homeBanner, setHomeBanner] = useState<HomeBanner | null>(fallbackHomeBanner);
+  const firstName = userName.split(' ')[0] || 'there';
+  const shouldShowBanner = bannerEnabled(homeBanner);
+  const eyebrow = cleanBannerText(homeBanner?.eyebrow);
+  const title = replaceBannerPlaceholders(cleanBannerText(homeBanner?.title), firstName);
+  const subtitle = cleanBannerText(homeBanner?.subtitle);
+  const remoteImageUrl = cleanBannerText(homeBanner?.image_url);
+  const bannerImageSource = remoteImageUrl ? { uri: remoteImageUrl } : require('@/assets/images/hero-mobile-banner.png');
+
+  useEffect(() => {
+    let mounted = true;
+
+    getCustomerHome(token)
+      .then((payload) => {
+        if (!mounted) {
+          return;
+        }
+
+        setHomeBanner(payload.home_banner ?? fallbackHomeBanner);
+      })
+      .catch(() => {
+        if (mounted) {
+          setHomeBanner(fallbackHomeBanner);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [token]);
+
   return (
     <>
-      <View style={local.welcomeCard}>
-        <View style={local.welcomeCopy}>
-          <Text style={local.eyebrow}>Premium care</Text>
-          <Text style={local.welcomeTitle}>Hi {userName.split(' ')[0] || 'there'}, ready for fresh clothes?</Text>
-          <Text style={local.welcomeText}>Schedule doorstep pickup, track requests, and manage your Cleanodry account from here.</Text>
+      {shouldShowBanner ? (
+        <View style={local.welcomeCard}>
+          {eyebrow || title || subtitle ? (
+            <View style={local.welcomeCopy}>
+              {eyebrow ? <Text style={local.eyebrow}>{eyebrow}</Text> : null}
+              {title ? <Text style={local.welcomeTitle}>{title}</Text> : null}
+              {subtitle ? <Text style={local.welcomeText}>{subtitle}</Text> : null}
+            </View>
+          ) : null}
+          <Image source={bannerImageSource} style={local.welcomeImage} contentFit="cover" />
         </View>
-        <Image source={require('@/assets/images/hero-mobile-banner.png')} style={local.welcomeImage} contentFit="cover" />
-      </View>
+      ) : null}
 
       <View style={local.accountCard}>
         <View style={local.accountIcon}>
@@ -427,7 +494,19 @@ function SupportContent() {
   );
 }
 
-function SectionContent({ active, userName, mobile, storeName }: { active: AppSection; userName: string; mobile: string; storeName?: string }) {
+function SectionContent({
+  active,
+  token,
+  userName,
+  mobile,
+  storeName,
+}: {
+  active: AppSection;
+  token: string;
+  userName: string;
+  mobile: string;
+  storeName?: string;
+}) {
   if (active === 'services') {
     return <ServicesContent />;
   }
@@ -444,7 +523,7 @@ function SectionContent({ active, userName, mobile, storeName }: { active: AppSe
     return <SupportContent />;
   }
 
-  return <HomeContent userName={userName} mobile={mobile} storeName={storeName} />;
+  return <HomeContent token={token} userName={userName} mobile={mobile} storeName={storeName} />;
 }
 
 export default function HomeScreen() {
@@ -462,6 +541,7 @@ export default function HomeScreen() {
       {auth.user ? (
         <SectionContent
           active={activeSection}
+          token={auth.user.token}
           userName={name}
           mobile={auth.user.mobile}
           storeName={auth.user.store?.name}

@@ -117,6 +117,19 @@ export type StorePackagesPayload = {
   packages: StorePackage[];
 };
 
+export type HomeBanner = {
+  enabled?: boolean | number;
+  eyebrow?: string | null;
+  title?: string | null;
+  subtitle?: string | null;
+  image_url?: string | null;
+};
+
+export type CustomerHomePayload = {
+  success: boolean;
+  home_banner?: HomeBanner | null;
+};
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -295,6 +308,12 @@ export async function getCustomerDetails(token: string) {
       headers: { Authorization: `Bearer ${token}` },
     },
   );
+}
+
+export async function getCustomerHome(token: string) {
+  return request<CustomerHomePayload>("/customer-home", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }
 
 export async function updateCustomer(
