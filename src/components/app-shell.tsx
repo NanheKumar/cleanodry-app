@@ -1,7 +1,7 @@
 import { Redirect, router } from 'expo-router';
 import { Image } from 'expo-image';
-import { type PropsWithChildren, type ReactNode, use, useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { type PropsWithChildren, type ReactNode, use, useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, Image as NativeImage, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 
 import { Button, Screen, brand } from '@/components/cleanodry-ui';
 import { getStoreNotifications, type StoreNotification } from '@/lib/api';
@@ -14,7 +14,6 @@ import {
 } from '@/lib/push-notifications';
 
 export const appBackground = '#F4FAF1';
-const appVersion = '1.0';
 
 export type AppSection = 'home' | 'services' | 'packages' | 'stores' | 'about' | 'support';
 
@@ -186,6 +185,13 @@ function AppHeader({
   return (
     <View style={styles.appHeader}>
       <View style={styles.headerTop}>
+        <View style={styles.headerSideLeft}>
+          <Pressable style={styles.headerActionButton} onPress={onMenuPress} accessibilityLabel="Open menu">
+            <View style={styles.headerMenuLine} />
+            <View style={styles.headerMenuLine} />
+            <View style={styles.headerMenuLine} />
+          </Pressable>
+        </View>
         <Image
           source={require('@/assets/images/logo-color.png')}
           style={styles.headerLogo}
@@ -193,7 +199,7 @@ function AppHeader({
           tintColor={brand.white}
           accessibilityLabel="Cleanodry"
         />
-        <View style={styles.headerActions}>
+        <View style={styles.headerSideRight}>
           <Pressable
             style={[
               styles.headerActionButton,
@@ -209,11 +215,6 @@ function AppHeader({
               </View>
             ) : null}
           </Pressable>
-          <Pressable style={styles.headerActionButton} onPress={onMenuPress} accessibilityLabel="Open menu">
-            <View style={styles.headerMenuLine} />
-            <View style={styles.headerMenuLine} />
-            <View style={styles.headerMenuLine} />
-          </Pressable>
         </View>
       </View>
     </View>
@@ -224,18 +225,25 @@ function NotificationPanel({
   loading,
   message,
   notifications,
+  onClose,
 }: {
   loading: boolean;
   message: string;
   notifications: StoreNotification[];
+  onClose: () => void;
 }) {
   return (
     <View style={styles.notificationPanel}>
       <View style={styles.notificationPanelHead}>
         <Text style={styles.notificationPanelTitle}>Notifications</Text>
-        <Text style={styles.notificationPanelCount}>{notifications.length}</Text>
+        <View style={styles.notificationPanelActions}>
+          <Text style={styles.notificationPanelCount}>{notifications.length}</Text>
+          <Pressable style={styles.notificationClose} onPress={onClose} accessibilityLabel="Close notifications">
+            <Text style={styles.notificationCloseText}>x</Text>
+          </Pressable>
+        </View>
       </View>
-      {loading ? <Text style={styles.notificationMuted}>Loading updates...</Text> : null}
+      {loading ? <LogoLoader compact /> : null}
       {message ? <Text selectable style={styles.notificationError}>{message}</Text> : null}
       {!loading && !message && notifications.length === 0 ? (
         <Text style={styles.notificationMuted}>No notifications found.</Text>
@@ -290,7 +298,7 @@ function SideMenu({
   return (
     <View style={[styles.menuOverlay, { minHeight: height }]}>
       <Pressable style={styles.menuScrim} onPress={onClose} accessibilityLabel="Close menu" />
-      <View style={[styles.menuPanel, { minHeight: height }]}>
+      <View style={[styles.menuPanel, { maxHeight: Math.max(420, height - 112) }]}>
         <View style={styles.menuHead}>
           <Image
             source={require('@/assets/images/logo-color.png')}
@@ -448,19 +456,53 @@ export function PageHeader({
   );
 }
 
-export function LoadingScreen({ label = 'Loading Cleanodry...' }: { label?: string }) {
+export function LoadingScreen() {
   return (
     <Screen contentContainerStyle={styles.loadingScreen}>
-      <Image
-        source={require('@/assets/images/logo-color.png')}
-        style={styles.loadingLogo}
-        contentFit="contain"
+      <LogoLoader />
+    </Screen>
+  );
+}
+
+export function LogoLoader({ compact = false }: { compact?: boolean }) {
+  const opacity = useRef(new Animated.Value(0.38)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          duration: 720,
+          toValue: 1,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          duration: 720,
+          toValue: 0.38,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    animation.start();
+
+    return () => {
+      animation.stop();
+    };
+  }, [opacity]);
+
+  return (
+    <View style={compact ? styles.compactLogoLoader : styles.logoLoader}>
+      <NativeImage
+        source={require('@/assets/images/loader-logo.png')}
+        style={compact ? styles.compactLoadingLogo : styles.loadingLogo}
+        resizeMode="contain"
         accessibilityLabel="Cleanodry"
       />
-      <Text style={styles.loadingSubtitle}>Premium Garment Care</Text>
-      <ActivityIndicator color={brand.green} size="large" style={styles.loadingSpinner} />
-      <Text style={styles.loadingText}>{label}</Text>
-    </Screen>
+      <View style={styles.loadingDots}>
+        <Animated.View style={[styles.loadingDot, { opacity }]} />
+        <Animated.View style={[styles.loadingDot, styles.loadingDotMiddle, { opacity }]} />
+        <Animated.View style={[styles.loadingDot, { opacity }]} />
+      </View>
+    </View>
   );
 }
 
@@ -488,29 +530,71 @@ export function AppCard({ children }: PropsWithChildren) {
   return <View style={styles.contentCard}>{children}</View>;
 }
 
-export function AppFooter() {
-  const year = new Date().getFullYear();
+type FooterNavItem = {
+  key: 'home' | 'pickup' | 'orders' | 'profile';
+  label: string;
+  icon: IconName;
+  onPress: () => void;
+};
+
+export function AppFooter({ activeSection, icon }: { activeSection?: AppSection; icon?: IconName } = {}) {
+  const activeKey =
+    activeSection === 'home'
+      ? activeSection
+      : icon === 'pickup'
+        ? 'pickup'
+      : icon === 'orders'
+        ? 'orders'
+        : icon === 'profile' || icon === 'account'
+          ? 'profile'
+          : undefined;
+  const items: FooterNavItem[] = [
+    {
+      key: 'home',
+      label: 'Home',
+      icon: 'home',
+      onPress: () => router.replace('/'),
+    },
+    {
+      key: 'pickup',
+      label: 'Pickups',
+      icon: 'pickup',
+      onPress: () => router.push('/pickups'),
+    },
+    {
+      key: 'orders',
+      label: 'Orders',
+      icon: 'orders',
+      onPress: () => router.push('/orders'),
+    },
+    {
+      key: 'profile',
+      label: 'Profile',
+      icon: 'profile',
+      onPress: () => router.push('/profile'),
+    },
+  ];
 
   return (
     <View style={styles.footer}>
-      <View style={styles.footerActions}>
-        <Pressable style={styles.footerAction} onPress={() => router.push('/pickup')}>
-          <View style={styles.footerActionIcon}>
-            <MenuGlyph name="pickup" />
-          </View>
-          <Text style={styles.footerActionText}>Book Appointment</Text>
-        </Pressable>
-        <Pressable style={styles.footerAction} onPress={() => Linking.openURL('tel:+917428380598')}>
-          <View style={styles.footerActionIcon}>
-            <MenuGlyph name="support" />
-          </View>
-          <Text style={styles.footerActionText}>Contact</Text>
-        </Pressable>
+      <View style={styles.footerNav}>
+        {items.map((item) => {
+          const selected = activeKey === item.key;
+          return (
+            <Pressable
+              key={item.key}
+              style={styles.footerNavItem}
+              onPress={item.onPress}
+              accessibilityRole="button"
+              accessibilityLabel={item.label}>
+              <View style={[styles.footerNavIcon, selected ? styles.footerNavIconActive : null]}>
+                <MenuGlyph name={item.icon} active={selected} />
+              </View>
+              <Text style={[styles.footerNavText, selected ? styles.footerNavTextActive : null]}>{item.label}</Text>
+            </Pressable>
+          );
+        })}
       </View>
-      <Text style={styles.footerCopyright}>
-        Copyright ©{year} Cleanodry Solutions Pvt Ltd. All rights reserved.
-      </Text>
-      <Text style={styles.footerVersion}>Version {appVersion}</Text>
     </View>
   );
 }
@@ -539,7 +623,7 @@ export function AppShell({
   const [notificationCount, setNotificationCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
 
   const loadNotifications = useCallback((showLoading = true) => {
     if (!auth.user) {
@@ -632,6 +716,8 @@ export function AppShell({
 
   const name = auth.user ? `${auth.user.firstName} ${auth.user.lastName}`.trim() || 'Customer' : 'Customer';
   const contentMinHeight = Math.max(0, height - 42);
+  const footerWidth = Math.min(width, 520);
+  const footerLeft = Math.max(0, (width - footerWidth) / 2);
 
   function handleSectionSelect(section: AppSection) {
     if (onSectionChange) {
@@ -642,46 +728,58 @@ export function AppShell({
   }
 
   return (
-    <Screen contentContainerStyle={[styles.screen, { minHeight: contentMinHeight }]}>
-      <AppHeader
-        notificationCount={notificationCount}
-        notificationsOpen={notificationsOpen}
-        onNotificationsPress={() => {
-          setMenuOpen(false);
-          setNotificationsOpen((open) => !open);
-        }}
-        onMenuPress={() => {
-          setNotificationsOpen(false);
-          setMenuOpen(true);
-        }}
-      />
-      {notificationsOpen ? (
-        <NotificationPanel
-          loading={notificationsLoading}
-          message={notificationMessage}
-          notifications={notifications}
+    <View style={styles.shell}>
+      <Screen contentContainerStyle={[styles.screen, styles.screenWithStickyFooter, { minHeight: contentMinHeight }]}>
+        <AppHeader
+          notificationCount={notificationCount}
+          notificationsOpen={notificationsOpen}
+          onNotificationsPress={() => {
+            setMenuOpen(false);
+            setNotificationsOpen((open) => !open);
+          }}
+          onMenuPress={() => {
+            setNotificationsOpen(false);
+            setMenuOpen(true);
+          }}
         />
-      ) : null}
-      {auth.user ? (
-        <SideMenu
-          visible={menuOpen}
-          active={activeSection}
-          userName={name}
-          storeName={auth.user.store?.name}
-          onClose={() => setMenuOpen(false)}
-          onSelectSection={handleSectionSelect}
-          onLogout={auth.signOut}
-        />
-      ) : null}
+        {auth.user ? (
+          <SideMenu
+            visible={menuOpen}
+            active={activeSection}
+            userName={name}
+            storeName={auth.user.store?.name}
+            onClose={() => setMenuOpen(false)}
+            onSelectSection={handleSectionSelect}
+            onLogout={auth.signOut}
+          />
+        ) : null}
 
-      <PageHeader title={title} subtitle={subtitle} icon={icon} showBack={activeSection ? activeSection !== 'home' : true} />
-      {children}
-      <AppFooter />
-    </Screen>
+        <PageHeader title={title} subtitle={subtitle} icon={icon} showBack={activeSection ? activeSection !== 'home' : true} />
+        {children}
+      </Screen>
+      {notificationsOpen ? (
+        <View pointerEvents="box-none" style={styles.notificationOverlay}>
+          <NotificationPanel
+            loading={notificationsLoading}
+            message={notificationMessage}
+            notifications={notifications}
+            onClose={() => setNotificationsOpen(false)}
+          />
+        </View>
+      ) : null}
+      <View pointerEvents="box-none" style={[styles.stickyFooterWrap, { left: footerLeft, width: footerWidth }]}>
+        <AppFooter activeSection={activeSection} icon={icon} />
+      </View>
+    </View>
   );
 }
 
 const styles = {
+  shell: {
+    backgroundColor: appBackground,
+    flex: 1,
+    position: 'relative' as const,
+  },
   screen: {
     alignSelf: 'center' as const,
     backgroundColor: appBackground,
@@ -691,32 +789,51 @@ const styles = {
     paddingBottom: 28,
     width: '100%' as const,
   },
+  screenWithStickyFooter: {
+    paddingBottom: 132,
+  },
   loadingScreen: {
     alignItems: 'center' as const,
     backgroundColor: appBackground,
     flexGrow: 1,
-    gap: 12,
     justifyContent: 'center' as const,
   },
+  logoLoader: {
+    alignItems: 'center' as const,
+    gap: 14,
+    justifyContent: 'center' as const,
+    padding: 18,
+  },
+  compactLogoLoader: {
+    alignItems: 'center' as const,
+    gap: 10,
+    justifyContent: 'center' as const,
+    paddingVertical: 10,
+  },
   loadingLogo: {
-    height: 56,
-    marginBottom: 2,
-    width: 180,
+    height: 164,
+    width: 164,
   },
-  loadingSubtitle: {
-    color: brand.gray,
-    fontSize: 12,
-    fontWeight: '700' as const,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase' as const,
+  compactLoadingLogo: {
+    height: 88,
+    width: 88,
   },
-  loadingSpinner: {
-    marginTop: 10,
+  loadingDots: {
+    alignItems: 'center' as const,
+    flexDirection: 'row' as const,
+    gap: 7,
+    height: 18,
+    justifyContent: 'center' as const,
   },
-  loadingText: {
-    color: brand.green,
-    fontSize: 15,
-    fontWeight: '800' as const,
+  loadingDot: {
+    backgroundColor: brand.green,
+    borderRadius: 999,
+    height: 8,
+    width: 8,
+  },
+  loadingDotMiddle: {
+    height: 10,
+    width: 10,
   },
   appHeader: {
     backgroundColor: brand.green,
@@ -734,10 +851,17 @@ const styles = {
     height: 54,
     width: 172,
   },
-  headerActions: {
+  headerSideLeft: {
     alignItems: 'center' as const,
     flexDirection: 'row' as const,
-    gap: 8,
+    flex: 1,
+    justifyContent: 'flex-start' as const,
+  },
+  headerSideRight: {
+    alignItems: 'center' as const,
+    flexDirection: 'row' as const,
+    flex: 1,
+    justifyContent: 'flex-end' as const,
   },
   headerActionButton: {
     alignItems: 'center' as const,
@@ -823,10 +947,26 @@ const styles = {
     gap: 10,
     padding: 14,
   },
+  notificationOverlay: {
+    alignSelf: 'center' as const,
+    left: 0,
+    maxWidth: 520,
+    paddingHorizontal: 16,
+    position: 'absolute' as const,
+    right: 0,
+    top: 118,
+    width: '100%' as const,
+    zIndex: 45,
+  },
   notificationPanelHead: {
     alignItems: 'center' as const,
     flexDirection: 'row' as const,
     justifyContent: 'space-between' as const,
+  },
+  notificationPanelActions: {
+    alignItems: 'center' as const,
+    flexDirection: 'row' as const,
+    gap: 8,
   },
   notificationPanelTitle: {
     color: '#111B0D',
@@ -842,6 +982,22 @@ const styles = {
     overflow: 'hidden' as const,
     paddingHorizontal: 9,
     paddingVertical: 5,
+  },
+  notificationClose: {
+    alignItems: 'center' as const,
+    backgroundColor: '#F1F5ED',
+    borderColor: 'rgba(52, 122, 0, 0.14)',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 28,
+    justifyContent: 'center' as const,
+    width: 28,
+  },
+  notificationCloseText: {
+    color: brand.green,
+    fontSize: 16,
+    fontWeight: '900' as const,
+    lineHeight: 18,
   },
   notificationItem: {
     alignItems: 'flex-start' as const,
@@ -970,58 +1126,59 @@ const styles = {
   },
   footer: {
     alignItems: 'center' as const,
-    borderTopColor: 'rgba(52, 122, 0, 0.14)',
-    borderTopWidth: 1,
-    gap: 6,
-    marginTop: 2,
-    paddingTop: 8,
-  },
-  footerActions: {
-    flexDirection: 'row' as const,
     gap: 8,
     width: '100%' as const,
   },
-  footerAction: {
-    alignItems: 'center' as const,
+  stickyFooterWrap: {
+    alignSelf: 'center' as const,
+    backgroundColor: 'rgba(244, 250, 241, 0.96)',
+    borderTopColor: 'rgba(52, 122, 0, 0.12)',
+    borderTopWidth: 1,
+    bottom: 0,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 10,
+    position: 'absolute' as const,
+    zIndex: 40,
+  },
+  footerNav: {
     backgroundColor: brand.white,
-    borderColor: 'rgba(52, 122, 0, 0.14)',
-    borderRadius: 12,
+    borderColor: 'rgba(52, 122, 0, 0.12)',
+    borderRadius: 18,
     borderWidth: 1,
-    flex: 1,
+    boxShadow: '0 10px 24px rgba(31, 56, 20, 0.10)',
     flexDirection: 'row' as const,
-    gap: 6,
-    justifyContent: 'center' as const,
-    minHeight: 38,
+    justifyContent: 'space-between' as const,
     paddingHorizontal: 8,
+    paddingVertical: 8,
+    width: '100%' as const,
   },
-  footerActionIcon: {
+  footerNavItem: {
     alignItems: 'center' as const,
-    backgroundColor: '#EEF6EA',
-    borderRadius: 10,
-    height: 26,
+    flex: 1,
+    gap: 4,
     justifyContent: 'center' as const,
-    width: 26,
+    minHeight: 54,
+    paddingHorizontal: 4,
   },
-  footerActionText: {
-    color: brand.green,
-    flexShrink: 1,
-    fontSize: 10,
+  footerNavIcon: {
+    alignItems: 'center' as const,
+    borderRadius: 14,
+    height: 30,
+    justifyContent: 'center' as const,
+    width: 34,
+  },
+  footerNavIconActive: {
+    backgroundColor: '#EEF6EA',
+  },
+  footerNavText: {
+    color: '#8A9287',
+    fontSize: 11,
     fontWeight: '900' as const,
     textAlign: 'center' as const,
   },
-  footerCopyright: {
-    color: '#667061',
-    fontSize: 9,
-    fontWeight: '700' as const,
-    lineHeight: 12,
-    textAlign: 'center' as const,
-  },
-  footerVersion: {
-    color: '#7C8876',
-    fontSize: 8,
-    fontWeight: '800' as const,
-    lineHeight: 10,
-    textAlign: 'center' as const,
+  footerNavTextActive: {
+    color: brand.green,
   },
   emptyState: {
     alignItems: 'center' as const,
@@ -1062,13 +1219,14 @@ const styles = {
   },
   menuPanel: {
     backgroundColor: brand.white,
-    bottom: 0,
-    boxShadow: '-8px 0 28px rgba(0, 0, 0, 0.16)',
+    borderBottomRightRadius: 24,
+    borderTopRightRadius: 24,
+    boxShadow: '8px 0 28px rgba(0, 0, 0, 0.16)',
+    left: 0,
     padding: 16,
     paddingTop: 20,
     position: 'absolute' as const,
-    right: 0,
-    top: 0,
+    top: 18,
     width: '86%' as const,
   },
   menuScroll: {

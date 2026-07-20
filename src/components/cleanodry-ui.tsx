@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { forwardRef, type PropsWithChildren, type ReactNode } from 'react';
+import { forwardRef, type PropsWithChildren, type ReactNode, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -119,31 +119,53 @@ export function SelectBox({
   options: { id: number | string; name: string; detail?: string }[];
   onChange: (id: number | string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const selectedOption = options.find((option) => String(value ?? '') === String(option.id));
+  const empty = options.length === 0;
+
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <View style={styles.optionList}>
-        {options.length === 0 ? <Text style={styles.muted}>{placeholder}</Text> : null}
-        {options.map((option) => {
-          const selected = String(value ?? '') === String(option.id);
-          return (
-            <Pressable
-              key={String(option.id)}
-              onPress={() => onChange(option.id)}
-              style={[styles.option, selected ? styles.optionSelected : null]}>
-              <View>
-                <Text style={[styles.optionTitle, selected ? styles.optionTitleSelected : null]}>
-                  {option.name}
+      <Pressable
+        disabled={empty}
+        onPress={() => setOpen((current) => !current)}
+        style={[styles.selectButton, open ? styles.selectButtonOpen : null, empty ? styles.selectButtonDisabled : null]}
+        accessibilityRole="button"
+        accessibilityLabel={`Select ${label}`}>
+        <View style={styles.selectButtonCopy}>
+          <Text style={[styles.selectButtonTitle, !selectedOption ? styles.selectPlaceholder : null]}>
+            {selectedOption?.name ?? placeholder}
+          </Text>
+          {selectedOption?.detail ? <Text style={styles.optionDetail}>{selectedOption.detail}</Text> : null}
+        </View>
+        <Text style={styles.selectArrow}>{open ? '^' : 'v'}</Text>
+      </Pressable>
+      {open ? (
+        <View style={styles.optionList}>
+          {options.map((option) => {
+            const selected = String(value ?? '') === String(option.id);
+            return (
+              <Pressable
+                key={String(option.id)}
+                onPress={() => {
+                  onChange(option.id);
+                  setOpen(false);
+                }}
+                style={[styles.option, selected ? styles.optionSelected : null]}>
+                <View style={styles.selectButtonCopy}>
+                  <Text style={[styles.optionTitle, selected ? styles.optionTitleSelected : null]}>
+                    {option.name}
+                  </Text>
+                  {option.detail ? <Text style={styles.optionDetail}>{option.detail}</Text> : null}
+                </View>
+                <Text style={[styles.optionCheck, selected ? styles.optionCheckSelected : null]}>
+                  {selected ? 'Selected' : 'Select'}
                 </Text>
-                {option.detail ? <Text style={styles.optionDetail}>{option.detail}</Text> : null}
-              </View>
-              <Text style={[styles.optionCheck, selected ? styles.optionCheckSelected : null]}>
-                {selected ? 'Selected' : 'Select'}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -335,6 +357,42 @@ export const styles = StyleSheet.create({
   },
   inputWithPrefix: {
     paddingLeft: 12,
+  },
+  selectButton: {
+    alignItems: 'center',
+    backgroundColor: '#FAFCF8',
+    borderColor: 'rgba(52, 122, 0, 0.18)',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 52,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  selectButtonOpen: {
+    borderColor: brand.green,
+  },
+  selectButtonDisabled: {
+    opacity: 0.7,
+  },
+  selectButtonCopy: {
+    flex: 1,
+    gap: 2,
+    paddingRight: 10,
+  },
+  selectButtonTitle: {
+    color: brand.black,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  selectPlaceholder: {
+    color: '#8A9287',
+  },
+  selectArrow: {
+    color: brand.green,
+    fontSize: 16,
+    fontWeight: '900',
   },
   optionList: {
     gap: 10,

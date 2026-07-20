@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { use, useEffect, useState } from 'react';
 
 import { AppCard, AppShell, EmptyState } from '@/components/app-shell';
@@ -30,7 +31,12 @@ export default function PickupsScreen() {
     <AppShell title="My Pickups" subtitle="Upcoming pickup requests linked with your account." icon="pickup">
       <Message text={message} />
       {pickups.length === 0 && !message ? (
-        <EmptyState title="No pickups found" subtitle="Scheduled pickup requests will appear here." />
+        <EmptyState
+          title="No pickups found"
+          subtitle="Scheduled pickup requests will appear here."
+          actionTitle="Schedule Pickup"
+          onAction={() => router.push('/pickup')}
+        />
       ) : null}
       {pickups.map((pickup) => {
         const store = pickup.store as Record<string, unknown> | null | undefined;

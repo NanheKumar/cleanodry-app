@@ -123,6 +123,9 @@ export type HomeBanner = {
   title?: string | null;
   subtitle?: string | null;
   image_url?: string | null;
+  imageUrl?: string | null;
+  image?: string | null;
+  banner_image_url?: string | null;
 };
 
 export type CustomerHomePayload = {

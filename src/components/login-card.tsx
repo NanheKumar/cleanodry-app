@@ -129,7 +129,7 @@ export function LoginCard({ onLoggedIn }: { onLoggedIn?: () => void }) {
   async function loadRegistrationStores() {
     const nextStores = await getStores();
     setStores(nextStores);
-    setSelectedStoreId((current) => current ?? nextStores[0]?.id ?? null);
+    setSelectedStoreId(null);
   }
 
   async function loadLinkedStoresAndContinue(token: string, customer: CustomerSummary | null) {
@@ -347,7 +347,7 @@ export function LoginCard({ onLoggedIn }: { onLoggedIn?: () => void }) {
           <SelectBox
             label="Store"
             value={selectedStoreId}
-            placeholder="Loading stores..."
+            placeholder={stores.length === 0 ? 'Loading stores...' : 'Select store'}
             options={storeOptions}
             onChange={(id) => setSelectedStoreId(Number(id))}
           />

@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { use, useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
 
-import { AppCard, AppShell, type AppSection, MenuGlyph, isAppSection } from '@/components/app-shell';
+import { AppCard, AppShell, LogoLoader, type AppSection, MenuGlyph, isAppSection } from '@/components/app-shell';
 import { Button, Message, brand } from '@/components/cleanodry-ui';
 import {
   ApiError,
@@ -82,6 +82,10 @@ function replaceBannerPlaceholders(value: string, firstName: string) {
   return value.replace(/\{first_name\}/g, firstName);
 }
 
+function bannerImageUrl(value: HomeBanner | null | undefined) {
+  return cleanBannerText(value?.image_url ?? value?.imageUrl ?? value?.banner_image_url ?? value?.image);
+}
+
 function SupportActionIcon({ type }: { type: 'call' | 'whatsapp' }) {
   return (
     <View style={[local.supportIcon, type === 'whatsapp' ? local.whatsappIcon : null]}>
@@ -106,13 +110,15 @@ function HomeContent({
   storeName?: string;
 }) {
   const [homeBanner, setHomeBanner] = useState<HomeBanner | null>(fallbackHomeBanner);
+  const [remoteBannerFailed, setRemoteBannerFailed] = useState(false);
   const firstName = userName.split(' ')[0] || 'there';
   const shouldShowBanner = bannerEnabled(homeBanner);
   const eyebrow = cleanBannerText(homeBanner?.eyebrow);
   const title = replaceBannerPlaceholders(cleanBannerText(homeBanner?.title), firstName);
   const subtitle = cleanBannerText(homeBanner?.subtitle);
-  const remoteImageUrl = cleanBannerText(homeBanner?.image_url);
-  const bannerImageSource = remoteImageUrl ? { uri: remoteImageUrl } : require('@/assets/images/hero-mobile-banner.png');
+  const remoteImageUrl = bannerImageUrl(homeBanner);
+  const bannerImageSource =
+    remoteImageUrl && !remoteBannerFailed ? { uri: remoteImageUrl } : require('@/assets/images/hero-mobile-banner.png');
 
   useEffect(() => {
     let mounted = true;
@@ -124,6 +130,7 @@ function HomeContent({
         }
 
         setHomeBanner(payload.home_banner ?? fallbackHomeBanner);
+        setRemoteBannerFailed(false);
       })
       .catch(() => {
         if (mounted) {
@@ -136,6 +143,10 @@ function HomeContent({
     };
   }, [token]);
 
+  useEffect(() => {
+    setRemoteBannerFailed(false);
+  }, [remoteImageUrl]);
+
   return (
     <>
       {shouldShowBanner ? (
@@ -147,7 +158,16 @@ function HomeContent({
               {subtitle ? <Text style={local.welcomeText}>{subtitle}</Text> : null}
             </View>
           ) : null}
-          <Image source={bannerImageSource} style={local.welcomeImage} contentFit="cover" />
+          <Image
+            source={bannerImageSource}
+            style={local.welcomeImage}
+            contentFit="cover"
+            onError={() => {
+              if (remoteImageUrl) {
+                setRemoteBannerFailed(true);
+              }
+            }}
+          />
         </View>
       ) : null}
 
@@ -288,7 +308,7 @@ function PackagesContent() {
       <Text style={local.contentTitle}>Packages</Text>
       <Text style={local.contentText}>Prepaid care packs help regular customers save on every order.</Text>
       <Message text={message} />
-      {loading ? <Text style={local.packageMuted}>Loading packages...</Text> : null}
+      {loading ? <LogoLoader compact /> : null}
       {customerPackages?.has_package ? (
         <View style={local.activePackageCard}>
           <View style={local.activePackageHead}>
@@ -396,7 +416,7 @@ function StoresContent() {
       <Text style={local.contentText}>Cleanodry is serving customers across multiple locations.</Text>
       <Image source={require('@/assets/images/stores-map.png')} style={local.mapImage} contentFit="contain" />
       <Message text={message} />
-      {loading ? <Text style={local.storeMuted}>Loading stores...</Text> : null}
+      {loading ? <LogoLoader compact /> : null}
       {!loading && !message && stores.length === 0 ? <Text style={local.storeMuted}>No stores found.</Text> : null}
       {stores.map((store) => {
         const phone = contactNumber(store);
