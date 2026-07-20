@@ -164,7 +164,7 @@ export default function PickupScreen() {
       setMessage('Please select store and service.');
       return;
     }
-    if (!fullName.trim() || !/^[6-9]\d{9}$/.test(mobile.replace(/\D/g, ''))) {
+    if (!fullName.trim() || !/^\d{10}$/.test(mobile.replace(/\D/g, ''))) {
       setMessage('Please enter name and valid mobile number.');
       return;
     }

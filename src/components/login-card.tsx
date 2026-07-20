@@ -22,6 +22,10 @@ function cleanMobile(value: string) {
   return value.replace(/\D/g, '').slice(0, 10);
 }
 
+function isValidMobile(value: string) {
+  return /^\d{10}$/.test(value);
+}
+
 function maskedMobile(value: string) {
   const cleaned = cleanMobile(value);
   if (cleaned.length < 4) {
@@ -170,8 +174,8 @@ export function LoginCard({ onLoggedIn }: { onLoggedIn?: () => void }) {
     setActiveCustomer(null);
     setLinkedStores([]);
     const nextMobile = cleanMobile(mobile);
-    if (!/^[6-9]\d{9}$/.test(nextMobile)) {
-      setMessage('Please enter a valid 10-digit Indian mobile number.');
+    if (!isValidMobile(nextMobile)) {
+      setMessage('Please enter a valid 10-digit mobile number.');
       return;
     }
 

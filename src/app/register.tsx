@@ -49,7 +49,7 @@ export default function RegisterScreen() {
       setMessage('Please enter first name and last name.');
       return;
     }
-    if (!/^[6-9]\d{9}$/.test(mobile)) {
+    if (!/^\d{10}$/.test(mobile)) {
       setMessage('Please enter a valid 10-digit mobile number.');
       return;
     }
